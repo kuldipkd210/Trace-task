@@ -1,4 +1,10 @@
 
 # Reference Swift implementation (boss repo copy)
 reference-swift/
+
+# Flutter / Dart generated
+.dart_tool/
+.flutter-plugins-dependencies
 build/
+
+
