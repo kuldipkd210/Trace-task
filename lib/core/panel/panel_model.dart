@@ -48,17 +48,34 @@ class PanelModel extends ChangeNotifier {
   DatePick? _dateOverride;
   bool _showingShortcuts = false;
   final bool _reviewMode = false;
+  bool _isListening = false;
+  String? _dictationError;
 
   PanelModel({
     required this.store,
     required this.config,
   }) {
-    store.addListener(notifyListeners);
+    store.addListener(_onStoreUpdated);
+    _ensureSelection();
+  }
+
+  void _onStoreUpdated() {
+    _ensureSelection();
+    notifyListeners();
+  }
+
+  void _ensureSelection() {
+    final ids = flatIDs;
+    if (ids.isEmpty) {
+      _selectedID = null;
+    } else if (_selectedID == null || !ids.contains(_selectedID)) {
+      _selectedID = ids.first;
+    }
   }
 
   @override
   void dispose() {
-    store.removeListener(notifyListeners);
+    store.removeListener(_onStoreUpdated);
     super.dispose();
   }
 
@@ -72,6 +89,8 @@ class PanelModel extends ChangeNotifier {
   DatePick? get dateOverride => _dateOverride;
   bool get showingShortcuts => _showingShortcuts;
   bool get reviewMode => _reviewMode;
+  bool get isListening => _isListening;
+  String? get dictationError => _dictationError;
 
   TackClock get clock => store.clock;
   DayCalendar get cal => store.cal;
@@ -175,7 +194,7 @@ class PanelModel extends ChangeNotifier {
   void selectNext() {
     final ids = flatIDs;
     if (ids.isEmpty) return;
-    if (_selectedID == null) {
+    if (_selectedID == null || !ids.contains(_selectedID)) {
       _selectedID = ids.first;
     } else {
       final index = ids.indexOf(_selectedID!);
@@ -189,7 +208,7 @@ class PanelModel extends ChangeNotifier {
   void selectPrevious() {
     final ids = flatIDs;
     if (ids.isEmpty) return;
-    if (_selectedID == null) {
+    if (_selectedID == null || !ids.contains(_selectedID)) {
       _selectedID = ids.last;
     } else {
       final index = ids.indexOf(_selectedID!);
@@ -227,9 +246,11 @@ class PanelModel extends ChangeNotifier {
     final parsed = _parsedInput(trimmed, override: _datePick ?? _dateOverride);
     if (_editingID != null) {
       store.edit(_editingID!, parsed, bucket: _bucketOverride);
+      _selectedID = _editingID;
       _editingID = null;
     } else {
-      store.add(parsed, bucket: _bucketOverride);
+      final added = store.add(parsed, bucket: _bucketOverride);
+      _selectedID = added.id;
     }
 
     _text = '';
@@ -242,38 +263,87 @@ class PanelModel extends ChangeNotifier {
 
   void markSelectedDone() {
     if (_selectedID != null) {
-      store.markDone(_selectedID!);
-      _autoSelectAdjacent();
+      markDone(_selectedID!);
     }
+  }
+
+  void markDone(String id) {
+    final ids = flatIDs;
+    final index = ids.indexOf(id);
+    store.markDone(id);
+    _reselect(ids, index, id);
   }
 
   void deleteSelected() {
     if (_selectedID != null) {
-      store.delete(_selectedID!);
-      _autoSelectAdjacent();
+      delete(_selectedID!);
     }
+  }
+
+  void delete(String id) {
+    final ids = flatIDs;
+    final index = ids.indexOf(id);
+    store.delete(id);
+    _reselect(ids, index, id);
+  }
+
+  void _reselect(List<String> ids, int removedIndex, String removedId) {
+    final remaining = ids.where((i) => i != removedId).toList();
+    if (remaining.isEmpty) {
+      _selectedID = null;
+    } else {
+      final nextIndex = removedIndex < remaining.length ? removedIndex : remaining.length - 1;
+      _selectedID = remaining[nextIndex];
+    }
+    notifyListeners();
   }
 
   void togglePinSelected() {
     if (_selectedID != null) {
       store.togglePin(_selectedID!);
+      notifyListeners();
     }
+  }
+
+  void togglePin(String id) {
+    store.togglePin(id);
+    _selectedID = id;
+    notifyListeners();
   }
 
   void snoozeSelected(int minutes) {
     if (_selectedID != null) {
       store.snooze(_selectedID!, minutes);
+      notifyListeners();
     }
   }
 
   void moveSelected(Bucket bucket) {
     if (_selectedID != null) {
       store.move(_selectedID!, bucket);
+      notifyListeners();
     }
   }
 
+  void move(String id, Bucket bucket) {
+    store.move(id, bucket);
+    _selectedID = id;
+    notifyListeners();
+  }
+
+  void toggleDictation() {
+    _isListening = !_isListening;
+    if (_isListening) {
+      _dictationError = null;
+    }
+    notifyListeners();
+  }
+
   void undo() {
-    store.undo();
+    if (store.undo()) {
+      _ensureSelection();
+      notifyListeners();
+    }
   }
 
   void clearOrClose() {
@@ -302,16 +372,6 @@ class PanelModel extends ChangeNotifier {
       );
     }
     return rawParsed;
-  }
-
-  void _autoSelectAdjacent() {
-    final ids = flatIDs;
-    if (ids.isEmpty) {
-      _selectedID = null;
-    } else if (_selectedID != null && !ids.contains(_selectedID)) {
-      _selectedID = ids.first;
-    }
-    notifyListeners();
   }
 }
 

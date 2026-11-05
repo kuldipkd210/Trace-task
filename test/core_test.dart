@@ -5,6 +5,8 @@ import 'package:tracetask/core/models/item.dart';
 import 'package:tracetask/core/models/menu_bar_state.dart';
 import 'package:tracetask/core/models/ranker.dart';
 import 'package:tracetask/core/models/sections.dart';
+import 'package:tracetask/core/config/config.dart';
+import 'package:tracetask/core/panel/panel_model.dart';
 import 'package:tracetask/core/parser/parser.dart';
 import 'package:tracetask/core/store/task_store.dart';
 import 'package:tracetask/core/time/day.dart';
@@ -241,6 +243,111 @@ void main() {
 
       expect(store.undo(), isTrue);
       expect(store.items.length, 1);
+    });
+  });
+
+  group('PanelModel Selection & Interactions', () {
+    test('task addition selects new task', () {
+      final clock = FakeClock(at(2026, 11, 4, 10));
+      final store = TaskStore(clock: clock, cal: cal);
+      final model = PanelModel(store: store, config: Config());
+
+      model.setText('First task');
+      model.submit();
+
+      expect(model.flatIDs.length, 1);
+      expect(model.selectedID, model.flatIDs.first);
+
+      model.setText('Second task');
+      model.submit();
+
+      expect(model.flatIDs.length, 2);
+      expect(model.selectedID, model.flatIDs.last);
+    });
+
+    test('arrow navigation moves selection up and down', () {
+      final clock = FakeClock(at(2026, 11, 4, 10));
+      final store = TaskStore(clock: clock, cal: cal);
+      final model = PanelModel(store: store, config: Config());
+
+      model.setText('Task A');
+      model.submit();
+      model.setText('Task B');
+      model.submit();
+      model.setText('Task C');
+      model.submit();
+
+      final ids = model.flatIDs;
+      expect(ids.length, 3);
+      expect(model.selectedID, ids[2]);
+
+      model.selectPrevious();
+      expect(model.selectedID, ids[1]);
+
+      model.selectPrevious();
+      expect(model.selectedID, ids[0]);
+
+      // At top, selectPrevious stays at top
+      model.selectPrevious();
+      expect(model.selectedID, ids[0]);
+
+      model.selectNext();
+      expect(model.selectedID, ids[1]);
+
+      model.selectNext();
+      expect(model.selectedID, ids[2]);
+
+      // At bottom, selectNext stays at bottom
+      model.selectNext();
+      expect(model.selectedID, ids[2]);
+    });
+
+    test('markDone and delete cleanly reselect adjacent task', () {
+      final clock = FakeClock(at(2026, 11, 4, 10));
+      final store = TaskStore(clock: clock, cal: cal);
+      final model = PanelModel(store: store, config: Config());
+
+      model.setText('Task 1');
+      model.submit();
+      model.setText('Task 2');
+      model.submit();
+      model.setText('Task 3');
+      model.submit();
+
+      final id2 = model.flatIDs[1];
+      model.selectID(id2);
+
+      // Delete middle item (Task 2) -> should reselect Task 3 (now index 1)
+      model.deleteSelected();
+      expect(model.flatIDs.length, 2);
+      expect(model.selectedID, model.flatIDs[1]);
+
+      // Mark done on Task 3 -> should reselect Task 1
+      model.markSelectedDone();
+      expect(model.flatIDs.length, 1);
+      expect(model.selectedID, model.flatIDs.first);
+
+      // Delete last remaining task -> selectedID becomes null
+      model.deleteSelected();
+      expect(model.flatIDs.isEmpty, isTrue);
+      expect(model.selectedID, isNull);
+    });
+
+    test('undo restores item and selection', () {
+      final clock = FakeClock(at(2026, 11, 4, 10));
+      final store = TaskStore(clock: clock, cal: cal);
+      final model = PanelModel(store: store, config: Config());
+
+      model.setText('Task to delete');
+      model.submit();
+      expect(model.flatIDs.length, 1);
+
+      model.deleteSelected();
+      expect(model.flatIDs.isEmpty, isTrue);
+
+      model.undo();
+      expect(model.flatIDs.length, 1);
+      expect(model.selectedID, isNotNull);
     });
   });
 }
