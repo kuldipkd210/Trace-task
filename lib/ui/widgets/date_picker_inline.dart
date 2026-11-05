@@ -148,3 +148,4 @@ class _DatePickerInlineState extends State<DatePickerInline> {
     );
   }
 }
+

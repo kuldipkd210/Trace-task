@@ -118,3 +118,4 @@ class QuickCaptureInput extends StatelessWidget {
     );
   }
 }
+

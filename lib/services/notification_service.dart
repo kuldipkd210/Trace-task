@@ -22,3 +22,4 @@ class NotificationService {
     await notification.show();
   }
 }
+

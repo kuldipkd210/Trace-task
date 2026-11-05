@@ -112,3 +112,4 @@ jobs:
         with:
           name: tracetask-windows
           path: tracetask-windows-x64.zip
+

@@ -62,3 +62,4 @@ class AppTheme {
     return brightness == Brightness.dark ? glass : card;
   }
 }
+
