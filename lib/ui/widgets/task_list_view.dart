@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import '../../core/models/bucket.dart';
 import '../../core/panel/panel_model.dart';
+import '../../core/parser/parser.dart';
 import '../theme/app_theme.dart';
 
 class TaskListView extends StatelessWidget {
@@ -17,19 +18,19 @@ class TaskListView extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = AppTheme.of(context);
     final groups = model.groups;
+    final allEmpty = groups.every((g) => g.rows.isEmpty);
 
-    final allRowsCount = groups.fold<int>(0, (sum, g) => sum + g.rows.length);
-    if (allRowsCount == 0) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20),
-          child: Text(
-            'No tasks. You are all caught up!',
-            style: TextStyle(
-              fontSize: 13,
-              color: theme.secondary.withOpacity(0.7),
-              fontStyle: FontStyle.italic,
-            ),
+    if (allEmpty) {
+      return Container(
+        height: 60,
+        alignment: Alignment.center,
+        child: Text(
+          'Nothing here. Type a task and press ↩',
+          style: TextStyle(
+            fontSize: theme.style == ThemeStyle.card ? 15 : 13,
+            fontFamily: theme.style == ThemeStyle.card ? 'serif' : null,
+            fontStyle: theme.style == ThemeStyle.card ? FontStyle.italic : FontStyle.normal,
+            color: theme.secondary,
           ),
         ),
       );
@@ -38,195 +39,244 @@ class TaskListView extends StatelessWidget {
     return ListView.builder(
       controller: scrollController,
       shrinkWrap: true,
-      padding: EdgeInsets.zero,
+      physics: const ClampingScrollPhysics(),
+      padding: EdgeInsets.only(
+        top: theme.style == ThemeStyle.glass ? 4 : 2,
+        bottom: 8,
+      ),
       itemCount: groups.length,
       itemBuilder: (context, groupIndex) {
         final group = groups[groupIndex];
         if (group.rows.isEmpty) return const SizedBox.shrink();
 
         return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Bucket Header
-            Padding(
-              padding: const EdgeInsets.only(top: 10, bottom: 4, left: 4),
-              child: Row(
-                children: [
-                  Text(
-                    group.bucket.title.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.8,
-                      color: theme.secondary.withOpacity(0.8),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: theme.sunken,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '${group.rows.length}',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: theme.secondary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            // Section Header
+            _buildSectionHeader(group.bucket, group.rows.length, theme),
+
             // Rows
-            ...group.rows.map((row) => _buildTaskRow(context, row, theme)),
+            ...group.rows.map((row) => _buildRow(row, group.bucket, theme)),
           ],
         );
       },
     );
   }
 
-  Widget _buildTaskRow(BuildContext context, TaskRow row, AppTheme theme) {
+  Widget _buildSectionHeader(Bucket bucket, int count, AppTheme theme) {
+    final isCard = theme.style == ThemeStyle.card;
+    final inset = isCard ? 22.0 : 18.0;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: inset,
+        right: inset,
+        top: 10,
+        bottom: 4,
+      ),
+      child: Text(
+        '${bucket.title.toUpperCase()} ($count)',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.6,
+          color: theme.secondary.withOpacity(0.8),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRow(TaskRow row, Bucket bucket, AppTheme theme) {
     final isSelected = model.selectedID == row.id;
-    final item = row.item;
-    final now = model.clock.now;
-    final hasFired = item.hasFired(now);
+    final isCard = theme.style == ThemeStyle.card;
 
     return InkWell(
       onTap: () => model.selectID(row.id),
       onDoubleTap: () => model.startEditing(row.id),
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 2),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? (theme.style == ThemeStyle.card
-                  ? theme.highlighter.withOpacity(0.6)
-                  : theme.accent.withOpacity(0.2))
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-          border: isSelected
-              ? Border.all(color: theme.accent.withOpacity(0.4), width: 1)
-              : null,
-        ),
-        child: Row(
-          children: [
-            // Done check circle
-            InkWell(
-              onTap: () => model.store.markDone(row.id),
-              child: Icon(
-                Icons.circle_outlined,
-                size: 16,
-                color: theme.secondary,
+      child: isCard
+          ? _buildCardRow(row, isSelected, bucket, theme)
+          : _buildGlassRow(row, isSelected, bucket, theme),
+    );
+  }
+
+  // Exact reproduction of Tack's Native Glass row
+  Widget _buildGlassRow(TaskRow row, bool isSelected, Bucket bucket, AppTheme theme) {
+    final item = row.item;
+    final ink = isSelected ? Colors.white : theme.ink;
+    final quiet = isSelected ? Colors.white.withOpacity(0.8) : theme.secondary;
+    final warning = isSelected ? Colors.white : theme.warning;
+
+    String? detail;
+    if (item.dueAt != null) {
+      final time = Parser.timeLabel(item.dueAt!, model.cal);
+      detail = bucket == Bucket.today ? time : '${Parser.dayLabel(item.due, model.cal)} $time';
+    } else if (bucket != Bucket.today && item.flex.name == 'none') {
+      detail = Parser.dayLabel(item.due, model.cal);
+    }
+
+    return Container(
+      height: 32,
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: isSelected ? theme.accent : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          if (item.pinned) ...[
+            Icon(Icons.push_pin, size: 11, color: ink),
+            const SizedBox(width: 6),
+          ],
+          Expanded(
+            child: Text(
+              item.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                color: ink,
               ),
             ),
-            const SizedBox(width: 8),
-
-            // Pinned Icon
-            if (item.pinned) ...[
-              Icon(
-                Icons.push_pin_rounded,
-                size: 14,
-                color: theme.accent,
+          ),
+          const SizedBox(width: 8),
+          if (row.isStale) ...[
+            Text(
+              'do, move or kill',
+              style: TextStyle(fontSize: 12, color: warning),
+            ),
+            const SizedBox(width: 6),
+          ],
+          if (row.overdueDays > 0) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? Colors.white.withOpacity(0.2)
+                    : const Color(0xFFFF9F0A).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(5),
               ),
-              const SizedBox(width: 4),
-            ],
-
-            // Title
-            Expanded(
               child: Text(
-                item.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                  color: theme.ink,
-                ),
-              ),
-            ),
-
-            // Overdue or Stale Badges
-            if (row.overdueDays > 0) ...[
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                decoration: BoxDecoration(
-                  color: theme.warning.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '${row.overdueDays}d late',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: theme.warning,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-            ] else if (row.isStale) ...[
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                decoration: BoxDecoration(
-                  color: theme.secondary.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  'stale',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: theme.secondary,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-            ],
-
-            // Due Time / Date label
-            if (item.dueAt != null) ...[
-              Text(
-                DateFormat('h:mm a').format(item.dueAt!.toLocal()),
+                '${row.overdueDays}d',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: hasFired ? theme.warning : theme.secondary,
+                  color: warning,
                 ),
               ),
-              const SizedBox(width: 6),
-            ],
-
-            // Action buttons on selection
-            if (isSelected) ...[
-              InkWell(
-                onTap: () => model.togglePinSelected(),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 3),
-                  child: Icon(
-                    item.pinned ? Icons.push_pin : Icons.push_pin_outlined,
-                    size: 14,
-                    color: item.pinned ? theme.accent : theme.secondary,
-                  ),
-                ),
-              ),
-              InkWell(
-                onTap: () => model.deleteSelected(),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 3),
-                  child: Icon(
-                    Icons.delete_outline_rounded,
-                    size: 14,
-                    color: theme.secondary,
-                  ),
-                ),
-              ),
-            ],
+            ),
+            const SizedBox(width: 6),
           ],
-        ),
+          if (detail != null) ...[
+            Text(
+              detail,
+              style: TextStyle(
+                fontSize: 12,
+                fontFamily: 'monospace',
+                color: quiet,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Exact reproduction of Tack's Index Card row
+  Widget _buildCardRow(TaskRow row, bool isSelected, Bucket bucket, AppTheme theme) {
+    final item = row.item;
+
+    String? lateNote;
+    if (row.overdueDays > 0 && row.isStale) {
+      lateNote = '${row.overdueDays}d late. Do, move or kill';
+    } else if (row.overdueDays > 0) {
+      lateNote = row.overdueDays == 1 ? '1 day late' : '${row.overdueDays} days late';
+    } else if (row.isStale) {
+      lateNote = 'Do, move or kill';
+    }
+
+    String? detail;
+    if (item.dueAt != null) {
+      final time = Parser.timeLabel(item.dueAt!, model.cal);
+      detail = bucket == Bucket.today ? time : '${Parser.dayLabel(item.due, model.cal)} $time';
+    } else if (bucket != Bucket.today && item.flex.name == 'none') {
+      detail = Parser.dayLabel(item.due, model.cal);
+    }
+
+    return Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 22),
+      child: Row(
+        children: [
+          // Red pushpin circle
+          if (item.pinned) ...[
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: theme.accent,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+
+          // Title with yellow highlighter when selected
+          Expanded(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    decoration: BoxDecoration(
+                      color: isSelected ? theme.highlighter : Colors.transparent,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                    child: Text(
+                      item.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontFamily: 'serif',
+                        color: theme.ink,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          if (lateNote != null) ...[
+            Text(
+              lateNote,
+              style: TextStyle(
+                fontSize: 13,
+                fontFamily: 'serif',
+                fontStyle: FontStyle.italic,
+                color: theme.warning,
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+
+          if (detail != null) ...[
+            Text(
+              detail,
+              style: const TextStyle(
+                fontSize: 12,
+                fontFamily: 'monospace',
+                color: Color(0xFF3B424A),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
@@ -9,95 +10,106 @@ class ShortcutsSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = AppTheme.of(context);
+    final isCard = theme.style == ThemeStyle.card;
+    final mod = Platform.isMacOS ? '⌘' : 'Ctrl+';
 
-    final shortcuts = [
-      ('Enter', 'Add task and close'),
-      ('Shift + Enter', 'Add task and stay open'),
-      ('↑  ↓', 'Select previous / next task'),
-      ('Ctrl + Enter', 'Mark selected task as Done'),
-      ('Ctrl + 1 / 2 / 3', 'Today / Week / Month bucket'),
-      ('Ctrl + D', 'Pick date and time'),
-      ('Ctrl + E', 'Edit selected task'),
-      ('Ctrl + P', 'Pin task to system tray / top bar'),
-      ('Ctrl + S', 'Snooze timed alert (+15 mins)'),
-      ('Ctrl + Backspace', 'Delete selected task'),
-      ('Ctrl + Z', 'Undo last action'),
-      ('Ctrl + /', 'Show / hide this cheat sheet'),
-      ('Esc', 'Clear draft, cancel, or close'),
+    final left = [
+      ('↩', 'Add and close'),
+      ('⇧↩', 'Add and stay open'),
+      ('↑ ↓', 'Select task'),
+      ('$mod↩', 'Mark Done'),
+      ('$mod⌫', 'Delete'),
+      ('${mod}Z', 'Undo'),
+      ('${mod}E', 'Edit'),
+      ('$mod 1 2 3', 'Today / Week / Month'),
+      ('${mod}S', 'Snooze 15m'),
     ];
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.surface,
-        borderRadius: BorderRadius.circular(12),
-      ),
+    final right = [
+      ('${mod}P', 'Pin to tray / menu bar'),
+      ('${mod}D', 'Pick a date and time'),
+      ('${mod}T', 'Toggle time in date row'),
+      ('${mod}L', 'Switch light / dark look'),
+      ('$mod.', 'Quiet mode (1 hr)'),
+      ('Esc', 'Clear draft, then close'),
+      ('$mod/', 'Show or hide this cheat sheet'),
+    ];
+
+    final inset = isCard ? 22.0 : 18.0;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: inset, vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             children: [
               Text(
-                'Keyboard Shortcuts',
+                isCard ? 'ALL KEYS' : 'All keys',
                 style: TextStyle(
-                  fontSize: 15,
+                  fontSize: 11,
                   fontWeight: FontWeight.bold,
-                  color: theme.ink,
+                  letterSpacing: 0.8,
+                  color: theme.secondary,
                 ),
               ),
               const Spacer(),
               InkWell(
                 onTap: onClose,
-                child: Icon(Icons.close_rounded, size: 18, color: theme.secondary),
+                child: Icon(Icons.close_rounded, size: 16, color: theme.secondary),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: ListView.separated(
-              itemCount: shortcuts.length,
-              separatorBuilder: (_, _) => Divider(color: theme.divider, height: 8),
-              itemBuilder: (context, index) {
-                final item = shortcuts[index];
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: theme.keycap,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: theme.divider),
-                        ),
-                        child: Text(
-                          item.$1,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontFamily: 'monospace',
-                            fontWeight: FontWeight.w600,
-                            color: theme.ink,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          item.$2,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: theme.secondary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _buildColumn(left, theme)),
+              const SizedBox(width: 20),
+              Expanded(child: _buildColumn(right, theme)),
+            ],
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildColumn(List<(String, String)> items, AppTheme theme) {
+    return Column(
+      children: items.map((item) {
+        return Container(
+          height: 26,
+          alignment: Alignment.centerLeft,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 78,
+                child: Text(
+                  item.$1,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.bold,
+                    color: theme.ink,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  item.$2,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: theme.secondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 }

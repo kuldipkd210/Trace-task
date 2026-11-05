@@ -21,23 +21,23 @@ class QuickCaptureInput extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = AppTheme.of(context);
-    final preview = model.preview;
+    final isCard = theme.style == ThemeStyle.card;
+    final horizontalInset = isCard ? 22.0 : 18.0;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: theme.sunken,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: theme.fieldStroke.withOpacity(0.15),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Top row: Large Input + Sun/Moon Button + Shortcuts Button
+        Padding(
+          padding: EdgeInsets.only(
+            left: horizontalInset,
+            right: 14,
+            top: isCard ? 18 : 14,
+            bottom: isCard ? 4 : 6,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
                 child: TextField(
@@ -46,53 +46,61 @@ class QuickCaptureInput extends StatelessWidget {
                   autofocus: true,
                   style: TextStyle(
                     color: theme.ink,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
+                    fontSize: isCard ? 25 : 22,
+                    fontFamily: isCard ? 'serif' : null,
+                    fontWeight: isCard ? FontWeight.normal : FontWeight.w400,
                   ),
                   decoration: InputDecoration(
                     isDense: true,
                     contentPadding: EdgeInsets.zero,
                     hintText: model.editingID != null
                         ? 'Editing task…'
-                        : 'What needs doing?',
+                        : 'Add a task…  try: call bank 3pm',
                     hintStyle: TextStyle(
-                      color: theme.secondary.withOpacity(0.6),
-                      fontSize: 15,
+                      color: theme.secondary.withOpacity(0.5),
+                      fontSize: isCard ? 25 : 22,
+                      fontFamily: isCard ? 'serif' : null,
                     ),
                     border: InputBorder.none,
                   ),
-                  onChanged: model.setText,
-                  onSubmitted: (_) {
-                    final effect = model.submit();
-                    if (effect == PanelEffect.close) {
+                  onChanged: (text) {
+                    model.setText(text);
+                  },
+                  onSubmitted: (text) {
+                    if (text.trim().isNotEmpty) {
+                      model.setText(text);
+                      model.submit();
                       controller.clear();
                     }
                   },
                 ),
               ),
               const SizedBox(width: 8),
-              // Appearance switcher (Sun / Moon)
+
+              // Sun / Moon LookButton
               InkWell(
                 onTap: onToggleTheme,
-                borderRadius: BorderRadius.circular(6),
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  alignment: Alignment.center,
                   child: Icon(
-                    theme.style == ThemeStyle.card
-                        ? Icons.dark_mode_outlined
-                        : Icons.light_mode_outlined,
+                    isCard ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
                     size: 16,
                     color: theme.secondary,
                   ),
                 ),
               ),
-              const SizedBox(width: 4),
-              // Help / Shortcuts
+
+              // Help / All keys button
               InkWell(
                 onTap: onToggleShortcuts,
-                borderRadius: BorderRadius.circular(6),
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  alignment: Alignment.center,
                   child: Icon(
                     Icons.help_outline_rounded,
                     size: 16,
@@ -102,20 +110,67 @@ class QuickCaptureInput extends StatelessWidget {
               ),
             ],
           ),
-          if (preview != null) ...[
-            const SizedBox(height: 5),
+        ),
+
+        // Status Line: Live hint or preview
+        Container(
+          height: 22,
+          padding: EdgeInsets.symmetric(horizontal: horizontalInset),
+          alignment: Alignment.centerLeft,
+          child: _buildStatusLine(theme),
+        ),
+
+        SizedBox(height: isCard ? 8 : 10),
+
+        // Divider
+        Container(
+          height: isCard ? 2 : 1,
+          color: isCard ? theme.accent : theme.divider,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatusLine(AppTheme theme) {
+    final preview = model.preview;
+    if (preview == null || preview.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final cleanText = preview.replaceAll('→ ', '');
+
+    if (theme.style == ThemeStyle.glass) {
+      return Container(
+        height: 20,
+        padding: const EdgeInsets.symmetric(horizontal: 9),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0A84FF).withOpacity(0.24),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
             Text(
-              preview,
-              style: TextStyle(
+              cleanText,
+              style: const TextStyle(
                 fontSize: 12,
-                color: theme.accent,
                 fontWeight: FontWeight.w600,
+                color: Color(0xFFA9D3FF),
               ),
             ),
           ],
-        ],
-      ),
-    );
+        ),
+      );
+    } else {
+      return Text(
+        cleanText,
+        style: TextStyle(
+          fontSize: 14,
+          fontFamily: 'serif',
+          fontStyle: FontStyle.italic,
+          color: theme.secondary,
+        ),
+      );
+    }
   }
 }
-

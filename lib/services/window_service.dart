@@ -9,9 +9,9 @@ class WindowService with WindowListener {
   VoidCallback? onFocusLost;
   bool autoHideOnBlur = false;
 
-  static const double panelWidth = 460;
-  static const double minPanelHeight = 220;
-  static const double maxPanelHeight = 700;
+  static const double panelWidth = 560;
+  static const double minPanelHeight = 180;
+  static const double maxPanelHeight = 520;
 
   Future<void> initialize({VoidCallback? onBlur}) async {
     onFocusLost = onBlur;

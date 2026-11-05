@@ -49,103 +49,80 @@ class _DatePickerInlineState extends State<DatePickerInline> {
   @override
   Widget build(BuildContext context) {
     final theme = AppTheme.of(context);
+    final isCard = theme.style == ThemeStyle.card;
     final dateStr = DateFormat('EEE, MMM d').format(_currentDate);
     final timeStr = DateFormat('h:mm a').format(_currentDate);
 
     return Container(
-      margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: theme.sunken,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: theme.accent.withOpacity(0.4)),
-      ),
+      height: isCard ? 40 : 44,
+      padding: EdgeInsets.symmetric(horizontal: isCard ? 22 : 18),
+      color: theme.sunken,
       child: Row(
         children: [
-          Icon(Icons.calendar_today_rounded, size: 14, color: theme.accent),
-          const SizedBox(width: 8),
-          Text(
-            dateStr,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: theme.ink,
+          // Date badge
+          Container(
+            height: 28,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              color: isCard ? const Color(0xFFFDFDFB) : Colors.white.withOpacity(0.09),
+              borderRadius: BorderRadius.circular(isCard ? 4 : 7),
+              border: Border.all(color: theme.fieldStroke, width: 1.2),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _hasTime ? '$dateStr $timeStr' : dateStr,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w600,
+                    color: theme.ink,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                InkWell(
+                  onTap: () => _shiftDay(-1),
+                  child: Icon(Icons.arrow_drop_down, size: 16, color: theme.secondary),
+                ),
+                InkWell(
+                  onTap: () => _shiftDay(1),
+                  child: Icon(Icons.arrow_drop_up, size: 16, color: theme.secondary),
+                ),
+              ],
             ),
           ),
-          if (_hasTime) ...[
-            const SizedBox(width: 8),
-            Text(
-              timeStr,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: theme.accent,
-              ),
-            ),
-          ],
-          const Spacer(),
-          // Shift day buttons
-          InkWell(
-            onTap: () => _shiftDay(-1),
-            borderRadius: BorderRadius.circular(4),
-            child: Padding(
-              padding: const EdgeInsets.all(3),
-              child: Icon(Icons.chevron_left_rounded, size: 16, color: theme.secondary),
-            ),
-          ),
-          InkWell(
-            onTap: () => _shiftDay(1),
-            borderRadius: BorderRadius.circular(4),
-            child: Padding(
-              padding: const EdgeInsets.all(3),
-              child: Icon(Icons.chevron_right_rounded, size: 16, color: theme.secondary),
-            ),
-          ),
-          const SizedBox(width: 6),
-          // Toggle Time button
+          const SizedBox(width: 12),
+
+          // Time checkbox
           InkWell(
             onTap: _toggleTime,
-            borderRadius: BorderRadius.circular(4),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: _hasTime ? theme.accent.withOpacity(0.15) : Colors.transparent,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                _hasTime ? 'Time on' : 'Time off',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: _hasTime ? theme.accent : theme.secondary,
-                  fontWeight: FontWeight.w600,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _hasTime ? Icons.check_box_outlined : Icons.check_box_outline_blank,
+                  size: 16,
+                  color: theme.ink,
                 ),
-              ),
+                const SizedBox(width: 4),
+                Text(
+                  'Time',
+                  style: TextStyle(fontSize: 12, color: theme.ink),
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 8),
-          // Commit button
-          InkWell(
-            onTap: widget.onCommit,
-            borderRadius: BorderRadius.circular(4),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: theme.accent,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: const Text(
-                'Set ↩',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
+
+          const Spacer(),
+
+          // Key hints
+          Text(
+            _hasTime ? '↩ set · Ctrl+T no time · Esc' : 'No timed alert · ↩ set · Ctrl+T time · Esc',
+            style: TextStyle(fontSize: 11, color: theme.secondary),
           ),
         ],
       ),
     );
   }
 }
-
