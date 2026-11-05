@@ -1,121 +1,153 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'core/config/app_paths.dart';
+import 'core/config/appearance.dart';
+import 'core/config/config.dart';
+import 'core/models/menu_bar_state.dart';
+import 'core/panel/panel_model.dart';
+import 'core/store/task_store.dart';
+import 'core/time/day.dart';
+import 'core/time/day_calendar.dart';
+import 'services/hotkey_service.dart';
+import 'services/notification_service.dart';
+import 'services/tray_service.dart';
+import 'services/window_service.dart';
+import 'ui/panel_screen.dart';
 
-void main() {
-  runApp(const MyApp());
-}
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  // 1. Load Config & Paths
+  final config = await AppPaths.loadConfig();
+  final tasksFile = await AppPaths.getTasksFile();
+  final backupDir = await AppPaths.getBackupsDir();
 
-  // This widget is the root of your application.
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
-    );
+  // 2. Setup Core Engine
+  const clock = SystemClock();
+  final cal = DayCalendar(rolloverHour: config.dayRolloverHour);
+  final store = TaskStore(
+    file: tasksFile,
+    backupDir: backupDir,
+    clock: clock,
+    cal: cal,
+  );
+  final model = PanelModel(store: store, config: config);
+
+  // 3. Setup Desktop Services
+  await WindowService.instance.initialize(
+    onBlur: () {
+      // Auto-save draft and hide on blur (matching macOS panel behavior)
+      if (model.text.trim().isNotEmpty) {
+        model.submit();
+      }
+      WindowService.instance.hide();
+    },
+  );
+
+  await NotificationService.instance.initialize();
+
+  await HotkeyService.instance.initialize(
+    onTrigger: () async {
+      await WindowService.instance.toggle();
+    },
+  );
+
+  // 4. Background Timer: update Tray status & fire alerts for timed tasks
+  final notifiedTasks = <String>{};
+
+  void updateTrayAndAlerts() {
+    final now = clock.now;
+    final state = MenuBarState.compute(store.items, now, cal);
+    TrayService.instance.updateState(state);
+
+    // Check for newly fired tasks
+    for (final item in store.items) {
+      if (item.hasFired(now) && !notifiedTasks.contains(item.id)) {
+        notifiedTasks.add(item.id);
+        NotificationService.instance.showTimedTaskAlert(
+          title: item.title,
+          body: 'Task is due now',
+        );
+      }
+    }
   }
+
+  await TrayService.instance.initialize(
+    onToggle: () {
+      WindowService.instance.toggle();
+    },
+    onAppearance: (appearance) async {
+      await AppPaths.saveAppearance(appearance);
+      model.config.appearance = appearance;
+      await TrayService.instance.updateContextMenu(appearance);
+    },
+  );
+
+  updateTrayAndAlerts();
+  Timer.periodic(const Duration(seconds: 15), (_) => updateTrayAndAlerts());
+
+  runApp(TraceTaskApp(model: model, initialConfig: config));
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+class TraceTaskApp extends StatefulWidget {
+  final PanelModel model;
+  final Config initialConfig;
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+  const TraceTaskApp({
+    super.key,
+    required this.model,
+    required this.initialConfig,
+  });
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<TraceTaskApp> createState() => _TraceTaskAppState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _TraceTaskAppState extends State<TraceTaskApp> {
+  late AppAppearance _appearance;
 
-  void _incrementCounter() {
+  @override
+  void initState() {
+    super.initState();
+    _appearance = widget.initialConfig.appearance;
+  }
+
+  void _handleAppearanceChange(AppAppearance appearance) async {
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _appearance = appearance;
     });
+    await AppPaths.saveAppearance(appearance);
+    widget.model.config.appearance = appearance;
+    await TrayService.instance.updateContextMenu(appearance);
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+    ThemeMode themeMode;
+    switch (_appearance) {
+      case AppAppearance.light:
+        themeMode = ThemeMode.light;
+      case AppAppearance.dark:
+        themeMode = ThemeMode.dark;
+      case AppAppearance.system:
+        themeMode = ThemeMode.system;
+    }
+
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'TraceTask',
+      themeMode: themeMode,
+      theme: ThemeData(
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: Colors.transparent,
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
-        ),
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: Colors.transparent,
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+      home: PanelScreen(
+        model: widget.model,
+        onAppearanceChange: _handleAppearanceChange,
       ),
     );
   }
