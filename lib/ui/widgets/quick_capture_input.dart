@@ -25,20 +25,19 @@ class QuickCaptureInput extends StatelessWidget {
       listenable: model,
       builder: (context, _) {
         final theme = AppTheme.of(context);
-        final isCard = theme.style == ThemeStyle.card;
-        final horizontalInset = isCard ? 22.0 : 18.0;
+        const horizontalInset = 22.0;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Top row: Large Input + Sun/Moon Button + Mic Button + Shortcuts Button
+            // Top row: Large Serif Input + Sun/Moon + Mic + Help
             Padding(
-              padding: EdgeInsets.only(
+              padding: const EdgeInsets.only(
                 left: horizontalInset,
                 right: 14,
-                top: isCard ? 18 : 14,
-                bottom: isCard ? 4 : 6,
+                top: 16,
+                bottom: 4,
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -50,9 +49,9 @@ class QuickCaptureInput extends StatelessWidget {
                       autofocus: true,
                       style: TextStyle(
                         color: theme.ink,
-                        fontSize: isCard ? 25 : 22,
-                        fontFamily: isCard ? 'serif' : null,
-                        fontWeight: isCard ? FontWeight.normal : FontWeight.w400,
+                        fontSize: 24,
+                        fontFamily: 'serif',
+                        fontWeight: FontWeight.normal,
                       ),
                       decoration: InputDecoration(
                         isDense: true,
@@ -61,9 +60,9 @@ class QuickCaptureInput extends StatelessWidget {
                             ? 'Editing task…'
                             : 'Add a task…  try: call bank 3pm',
                         hintStyle: TextStyle(
-                          color: theme.secondary.withOpacity(0.5),
-                          fontSize: isCard ? 25 : 22,
-                          fontFamily: isCard ? 'serif' : null,
+                          color: theme.secondary.withOpacity(0.55),
+                          fontSize: 24,
+                          fontFamily: 'serif',
                         ),
                         border: InputBorder.none,
                       ),
@@ -87,7 +86,9 @@ class QuickCaptureInput extends StatelessWidget {
 
                   // Sun / Moon LookButton
                   Tooltip(
-                    message: isCard ? 'Switch to dark (Ctrl+L)' : 'Switch to light (Ctrl+L)',
+                    message: theme.brightness == Brightness.dark
+                        ? 'Switch to light (Ctrl+L)'
+                        : 'Switch to dark (Ctrl+L)',
                     child: InkWell(
                       onTap: onToggleTheme,
                       borderRadius: BorderRadius.circular(16),
@@ -96,7 +97,9 @@ class QuickCaptureInput extends StatelessWidget {
                         height: 32,
                         alignment: Alignment.center,
                         child: Icon(
-                          isCard ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
+                          theme.brightness == Brightness.dark
+                              ? Icons.light_mode_outlined
+                              : Icons.dark_mode_outlined,
                           size: 16,
                           color: theme.secondary,
                         ),
@@ -116,9 +119,7 @@ class QuickCaptureInput extends StatelessWidget {
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: model.isListening
-                              ? (isCard ? const Color(0xFFB4232C) : const Color(0xFFFF453A))
-                              : Colors.transparent,
+                          color: model.isListening ? theme.accent : Colors.transparent,
                         ),
                         child: Icon(
                           model.isListening ? Icons.mic : Icons.mic_none_outlined,
@@ -154,17 +155,17 @@ class QuickCaptureInput extends StatelessWidget {
             // Status Line: Live hint or preview or dictation state
             Container(
               height: 22,
-              padding: EdgeInsets.symmetric(horizontal: horizontalInset),
+              padding: const EdgeInsets.symmetric(horizontal: horizontalInset),
               alignment: Alignment.centerLeft,
               child: _buildStatusLine(theme),
             ),
 
-            SizedBox(height: isCard ? 8 : 10),
+            const SizedBox(height: 8),
 
-            // Divider
+            // Red Accent Divider (Identical in both Light and Dark)
             Container(
-              height: isCard ? 2 : 1,
-              color: isCard ? theme.accent : theme.divider,
+              height: 2,
+              color: theme.accent,
             ),
           ],
         );
@@ -177,7 +178,9 @@ class QuickCaptureInput extends StatelessWidget {
       return Text(
         'Listening… speak your task',
         style: TextStyle(
-          fontSize: 12,
+          fontSize: 13,
+          fontFamily: 'serif',
+          fontStyle: FontStyle.italic,
           fontWeight: FontWeight.w500,
           color: theme.warning,
         ),
@@ -191,38 +194,14 @@ class QuickCaptureInput extends StatelessWidget {
 
     final cleanText = preview.replaceAll('→ ', '');
 
-    if (theme.style == ThemeStyle.glass) {
-      return Container(
-        height: 20,
-        padding: const EdgeInsets.symmetric(horizontal: 9),
-        decoration: BoxDecoration(
-          color: const Color(0xFF0A84FF).withOpacity(0.24),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              cleanText,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFFA9D3FF),
-              ),
-            ),
-          ],
-        ),
-      );
-    } else {
-      return Text(
-        cleanText,
-        style: TextStyle(
-          fontSize: 14,
-          fontFamily: 'serif',
-          fontStyle: FontStyle.italic,
-          color: theme.secondary,
-        ),
-      );
-    }
+    return Text(
+      cleanText,
+      style: TextStyle(
+        fontSize: 14,
+        fontFamily: 'serif',
+        fontStyle: FontStyle.italic,
+        color: theme.secondary,
+      ),
+    );
   }
 }

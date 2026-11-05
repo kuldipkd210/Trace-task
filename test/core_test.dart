@@ -214,6 +214,37 @@ void main() {
       expect(state.tone, TrayTone.red);
       expect(state.title, '1 · Call client');
     });
+
+    test('MenuBarState priority: earliest time > pinned > last added', () {
+      final now = at(2026, 11, 4, 12);
+
+      // Case 1: Only plain tasks -> last task added wins
+      final task1 = Item(title: 'Task One', due: day(2026, 11, 4), createdAt: at(2026, 11, 4, 9));
+      final task2 = Item(title: 'Task Two', due: day(2026, 11, 4), createdAt: at(2026, 11, 4, 10));
+      var state = MenuBarState.compute([task1, task2], now, cal);
+      expect(state.title, '2 · Task Two');
+
+      // Case 2: Pinned task wins over unpinned newer task
+      final pinnedTask = Item(title: 'Important Pinned', due: day(2026, 11, 4), pinned: true, createdAt: at(2026, 11, 4, 8));
+      state = MenuBarState.compute([task1, task2, pinnedTask], now, cal);
+      expect(state.title, '3 · Important Pinned');
+
+      // Case 3: Task with earliest time wins over pinned task and newer tasks
+      final timedEarlier = Item(
+        title: 'Meeting at 2pm',
+        due: day(2026, 11, 4),
+        dueAt: at(2026, 11, 4, 14),
+        createdAt: at(2026, 11, 4, 7),
+      );
+      final timedLater = Item(
+        title: 'Dinner at 7pm',
+        due: day(2026, 11, 4),
+        dueAt: at(2026, 11, 4, 19),
+        createdAt: at(2026, 11, 4, 11),
+      );
+      state = MenuBarState.compute([task1, task2, pinnedTask, timedEarlier, timedLater], now, cal);
+      expect(state.title, '5 · Meeting at 2pm');
+    });
   });
 
   group('TaskStore', () {
@@ -252,17 +283,20 @@ void main() {
       final store = TaskStore(clock: clock, cal: cal);
       final model = PanelModel(store: store, config: Config());
 
+      clock.now = at(2026, 11, 4, 10, 1);
       model.setText('First task');
       model.submit();
 
       expect(model.flatIDs.length, 1);
       expect(model.selectedID, model.flatIDs.first);
+      expect(model.store.item(model.selectedID!)?.title, 'First task');
 
+      clock.now = at(2026, 11, 4, 10, 2);
       model.setText('Second task');
       model.submit();
 
       expect(model.flatIDs.length, 2);
-      expect(model.selectedID, model.flatIDs.last);
+      expect(model.store.item(model.selectedID!)?.title, 'Second task');
     });
 
     test('arrow navigation moves selection up and down', () {
@@ -270,10 +304,13 @@ void main() {
       final store = TaskStore(clock: clock, cal: cal);
       final model = PanelModel(store: store, config: Config());
 
+      clock.now = at(2026, 11, 4, 10, 1);
       model.setText('Task A');
       model.submit();
+      clock.now = at(2026, 11, 4, 10, 2);
       model.setText('Task B');
       model.submit();
+      clock.now = at(2026, 11, 4, 10, 3);
       model.setText('Task C');
       model.submit();
 

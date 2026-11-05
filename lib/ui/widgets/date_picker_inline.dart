@@ -3,45 +3,87 @@ import 'package:intl/intl.dart';
 import '../../core/models/date_pick.dart';
 import '../theme/app_theme.dart';
 
+enum DatePickSegment { date, time }
+
 class DatePickerInline extends StatefulWidget {
   final DatePick pick;
+  final DatePickSegment activeSegment;
   final ValueChanged<DatePick> onChanged;
+  final ValueChanged<DatePickSegment>? onSegmentChanged;
   final VoidCallback onCommit;
   final VoidCallback onCancel;
 
   const DatePickerInline({
     super.key,
     required this.pick,
+    this.activeSegment = DatePickSegment.date,
     required this.onChanged,
+    this.onSegmentChanged,
     required this.onCommit,
     required this.onCancel,
   });
 
   @override
-  State<DatePickerInline> createState() => _DatePickerInlineState();
+  State<DatePickerInline> createState() => DatePickerInlineState();
 }
 
-class _DatePickerInlineState extends State<DatePickerInline> {
+class DatePickerInlineState extends State<DatePickerInline> {
   late DateTime _currentDate;
   late bool _hasTime;
+  late DatePickSegment _segment;
 
   @override
   void initState() {
     super.initState();
     _currentDate = widget.pick.date;
     _hasTime = widget.pick.hasTime;
+    _segment = widget.activeSegment;
   }
 
-  void _shiftDay(int days) {
+  @override
+  void didUpdateWidget(covariant DatePickerInline oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.pick.date != _currentDate || widget.pick.hasTime != _hasTime) {
+      _currentDate = widget.pick.date;
+      _hasTime = widget.pick.hasTime;
+    }
+    if (widget.activeSegment != _segment) {
+      _segment = widget.activeSegment;
+    }
+  }
+
+  void setSegment(DatePickSegment segment) {
+    setState(() {
+      _segment = segment;
+      if (segment == DatePickSegment.time && !_hasTime) {
+        _hasTime = true;
+        widget.onChanged(DatePick(date: _currentDate, hasTime: _hasTime));
+      }
+      widget.onSegmentChanged?.call(_segment);
+    });
+  }
+
+  void shiftDay(int days) {
     setState(() {
       _currentDate = _currentDate.add(Duration(days: days));
       widget.onChanged(DatePick(date: _currentDate, hasTime: _hasTime));
     });
   }
 
-  void _toggleTime() {
+  void shiftTime(int minutes) {
+    setState(() {
+      _hasTime = true;
+      _currentDate = _currentDate.add(Duration(minutes: minutes));
+      widget.onChanged(DatePick(date: _currentDate, hasTime: _hasTime));
+    });
+  }
+
+  void toggleTime() {
     setState(() {
       _hasTime = !_hasTime;
+      if (_hasTime) {
+        _segment = DatePickSegment.time;
+      }
       widget.onChanged(DatePick(date: _currentDate, hasTime: _hasTime));
     });
   }
@@ -49,77 +91,172 @@ class _DatePickerInlineState extends State<DatePickerInline> {
   @override
   Widget build(BuildContext context) {
     final theme = AppTheme.of(context);
-    final isCard = theme.style == ThemeStyle.card;
     final dateStr = DateFormat('EEE, MMM d').format(_currentDate);
     final timeStr = DateFormat('h:mm a').format(_currentDate);
 
+    final isDateActive = _segment == DatePickSegment.date;
+    final isTimeActive = _segment == DatePickSegment.time;
+
     return Container(
-      height: isCard ? 40 : 44,
-      padding: EdgeInsets.symmetric(horizontal: isCard ? 22 : 18),
+      height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 22),
       color: theme.sunken,
       child: Row(
         children: [
-          // Date badge
-          Container(
-            height: 28,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              color: isCard ? const Color(0xFFFDFDFB) : Colors.white.withOpacity(0.09),
-              borderRadius: BorderRadius.circular(isCard ? 4 : 7),
-              border: Border.all(color: theme.fieldStroke, width: 1.2),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _hasTime ? '$dateStr $timeStr' : dateStr,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontFamily: 'monospace',
-                    fontWeight: FontWeight.w600,
-                    color: theme.ink,
+          // 1. DATE BOX
+          InkWell(
+            onTap: () => setSegment(DatePickSegment.date),
+            borderRadius: BorderRadius.circular(4),
+            child: Container(
+              height: 28,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: theme.surface,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: isDateActive ? theme.fieldStroke : theme.divider,
+                  width: isDateActive ? 1.5 : 1.0,
+                ),
+                boxShadow: isDateActive
+                    ? [
+                        BoxShadow(
+                          color: theme.accent.withOpacity(0.2),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.calendar_today_outlined,
+                    size: 13,
+                    color: isDateActive ? theme.accent : theme.secondary,
                   ),
-                ),
-                const SizedBox(width: 4),
-                InkWell(
-                  onTap: () => _shiftDay(-1),
-                  child: Icon(Icons.arrow_drop_down, size: 16, color: theme.secondary),
-                ),
-                InkWell(
-                  onTap: () => _shiftDay(1),
-                  child: Icon(Icons.arrow_drop_up, size: 16, color: theme.secondary),
-                ),
-              ],
+                  const SizedBox(width: 6),
+                  Text(
+                    dateStr,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      fontWeight: isDateActive ? FontWeight.bold : FontWeight.w500,
+                      color: isDateActive ? theme.ink : theme.ink.withOpacity(0.85),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  InkWell(
+                    onTap: () => shiftDay(-1),
+                    child: Icon(Icons.arrow_drop_down, size: 16, color: theme.secondary),
+                  ),
+                  InkWell(
+                    onTap: () => shiftDay(1),
+                    child: Icon(Icons.arrow_drop_up, size: 16, color: theme.secondary),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(width: 12),
 
-          // Time checkbox
+          const SizedBox(width: 8),
+
+          // 2. TIME BOX
           InkWell(
-            onTap: _toggleTime,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  _hasTime ? Icons.check_box_outlined : Icons.check_box_outline_blank,
-                  size: 16,
-                  color: theme.ink,
+            onTap: () => setSegment(DatePickSegment.time),
+            borderRadius: BorderRadius.circular(4),
+            child: Container(
+              height: 28,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: theme.surface,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: isTimeActive ? theme.fieldStroke : theme.divider,
+                  width: isTimeActive ? 1.5 : 1.0,
                 ),
-                const SizedBox(width: 4),
-                Text(
-                  'Time',
-                  style: TextStyle(fontSize: 12, color: theme.ink),
-                ),
-              ],
+                boxShadow: isTimeActive
+                    ? [
+                        BoxShadow(
+                          color: theme.accent.withOpacity(0.2),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.access_time_rounded,
+                    size: 13,
+                    color: isTimeActive ? theme.accent : theme.secondary,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    _hasTime ? timeStr : 'No time',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      fontWeight: isTimeActive ? FontWeight.bold : FontWeight.w500,
+                      color: _hasTime
+                          ? (isTimeActive ? theme.ink : theme.ink.withOpacity(0.85))
+                          : theme.secondary,
+                    ),
+                  ),
+                  if (_hasTime) ...[
+                    const SizedBox(width: 4),
+                    InkWell(
+                      onTap: () => shiftTime(-30),
+                      child: Icon(Icons.arrow_drop_down, size: 16, color: theme.secondary),
+                    ),
+                    InkWell(
+                      onTap: () => shiftTime(30),
+                      child: Icon(Icons.arrow_drop_up, size: 16, color: theme.secondary),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          // 3. TIME TOGGLE CHECKBOX
+          InkWell(
+            onTap: toggleTime,
+            borderRadius: BorderRadius.circular(4),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _hasTime ? Icons.check_box_outlined : Icons.check_box_outline_blank,
+                    size: 15,
+                    color: _hasTime ? theme.accent : theme.secondary,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Time',
+                    style: TextStyle(fontSize: 11, color: theme.ink),
+                  ),
+                ],
+              ),
             ),
           ),
 
           const Spacer(),
 
-          // Key hints
+          // 4. KEYBOARD HINT
           Text(
-            _hasTime ? '↩ set · Ctrl+T no time · Esc' : 'No timed alert · ↩ set · Ctrl+T time · Esc',
-            style: TextStyle(fontSize: 11, color: theme.secondary),
+            '↩ set · ^D Date · ^T Time · Esc',
+            style: TextStyle(
+              fontSize: 11,
+              fontFamily: 'monospace',
+              color: theme.secondary,
+            ),
           ),
         ],
       ),

@@ -169,6 +169,36 @@ class PanelModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void toggleDatePickTime() {
+    if (_datePick != null) {
+      _datePick = DatePick(
+        date: _datePick!.date,
+        hasTime: !_datePick!.hasTime,
+      );
+      notifyListeners();
+    }
+  }
+
+  void shiftDatePickDay(int days) {
+    if (_datePick != null) {
+      _datePick = DatePick(
+        date: _datePick!.date.add(Duration(days: days)),
+        hasTime: _datePick!.hasTime,
+      );
+      notifyListeners();
+    }
+  }
+
+  void shiftDatePickTime(int minutes) {
+    if (_datePick != null) {
+      _datePick = DatePick(
+        date: _datePick!.date.add(Duration(minutes: minutes)),
+        hasTime: true,
+      );
+      notifyListeners();
+    }
+  }
+
   void cancelDatePick() {
     _datePick = null;
     notifyListeners();

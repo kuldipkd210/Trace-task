@@ -93,7 +93,8 @@ void main() async {
   }
 
   updateTrayAndAlerts();
-  Timer.periodic(const Duration(seconds: 15), (_) => updateTrayAndAlerts());
+  store.addListener(updateTrayAndAlerts);
+  Timer.periodic(const Duration(seconds: 10), (_) => updateTrayAndAlerts());
 
   runApp(TraceTaskApp(model: model, initialConfig: config));
 }
@@ -152,7 +153,7 @@ class _TraceTaskAppState extends State<TraceTaskApp> {
       ),
       darkTheme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF181A1E),
+        scaffoldBackgroundColor: const Color(0xFF212328),
       ),
       home: PanelScreen(
         model: widget.model,

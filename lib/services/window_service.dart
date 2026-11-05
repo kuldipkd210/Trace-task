@@ -7,6 +7,8 @@ class WindowService with WindowListener {
   WindowService._();
 
   VoidCallback? onFocusLost;
+  VoidCallback? onWindowShown;
+  VoidCallback? onFocusGained;
   bool autoHideOnBlur = false;
 
   static const double panelWidth = 560;
@@ -43,6 +45,7 @@ class WindowService with WindowListener {
     try {
       await windowManager.show();
       await windowManager.focus();
+      onWindowShown?.call();
     } catch (_) {}
   }
 
@@ -71,6 +74,11 @@ class WindowService with WindowListener {
         await windowManager.setSize(Size(panelWidth, clampedHeight));
       }
     } catch (_) {}
+  }
+
+  @override
+  void onWindowFocus() {
+    onFocusGained?.call();
   }
 
   @override
