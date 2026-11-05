@@ -190,7 +190,7 @@ class _PanelScreenState extends State<PanelScreen> {
       autofocus: true,
       onKeyEvent: _handleKeyEvent,
       child: Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: theme.surface,
         body: Container(
           margin: const EdgeInsets.all(8),
           padding: const EdgeInsets.all(14),

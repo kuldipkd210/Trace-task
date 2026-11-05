@@ -33,55 +33,64 @@ void main() async {
   );
   final model = PanelModel(store: store, config: config);
 
-  // 3. Setup Desktop Services
-  await WindowService.instance.initialize(
-    onBlur: () {
-      // Auto-save draft and hide on blur (matching macOS panel behavior)
-      if (model.text.trim().isNotEmpty) {
-        model.submit();
-      }
-      WindowService.instance.hide();
-    },
-  );
+  // 3. Setup Desktop Services (safely guarded)
+  try {
+    await WindowService.instance.initialize();
+  } catch (e) {
+    debugPrint('WindowService init warning: $e');
+  }
 
-  await NotificationService.instance.initialize();
+  try {
+    await NotificationService.instance.initialize();
+  } catch (e) {
+    debugPrint('NotificationService init warning: $e');
+  }
 
-  await HotkeyService.instance.initialize(
-    onTrigger: () async {
-      await WindowService.instance.toggle();
-    },
-  );
+  try {
+    await HotkeyService.instance.initialize(
+      onTrigger: () async {
+        await WindowService.instance.toggle();
+      },
+    );
+  } catch (e) {
+    debugPrint('HotkeyService init warning: $e');
+  }
 
-  // 4. Background Timer: update Tray status & fire alerts for timed tasks
+  // 4. Setup Tray & Periodic Timer
   final notifiedTasks = <String>{};
 
   void updateTrayAndAlerts() {
-    final now = clock.now;
-    final state = MenuBarState.compute(store.items, now, cal);
-    TrayService.instance.updateState(state);
+    try {
+      final now = clock.now;
+      final state = MenuBarState.compute(store.items, now, cal);
+      TrayService.instance.updateState(state);
 
-    // Check for newly fired tasks
-    for (final item in store.items) {
-      if (item.hasFired(now) && !notifiedTasks.contains(item.id)) {
-        notifiedTasks.add(item.id);
-        NotificationService.instance.showTimedTaskAlert(
-          title: item.title,
-          body: 'Task is due now',
-        );
+      for (final item in store.items) {
+        if (item.hasFired(now) && !notifiedTasks.contains(item.id)) {
+          notifiedTasks.add(item.id);
+          NotificationService.instance.showTimedTaskAlert(
+            title: item.title,
+            body: 'Task is due now',
+          );
+        }
       }
-    }
+    } catch (_) {}
   }
 
-  await TrayService.instance.initialize(
-    onToggle: () {
-      WindowService.instance.toggle();
-    },
-    onAppearance: (appearance) async {
-      await AppPaths.saveAppearance(appearance);
-      model.config.appearance = appearance;
-      await TrayService.instance.updateContextMenu(appearance);
-    },
-  );
+  try {
+    await TrayService.instance.initialize(
+      onToggle: () {
+        WindowService.instance.toggle();
+      },
+      onAppearance: (appearance) async {
+        await AppPaths.saveAppearance(appearance);
+        model.config.appearance = appearance;
+        await TrayService.instance.updateContextMenu(appearance);
+      },
+    );
+  } catch (e) {
+    debugPrint('TrayService init warning: $e');
+  }
 
   updateTrayAndAlerts();
   Timer.periodic(const Duration(seconds: 15), (_) => updateTrayAndAlerts());
@@ -139,11 +148,11 @@ class _TraceTaskAppState extends State<TraceTaskApp> {
       themeMode: themeMode,
       theme: ThemeData(
         brightness: Brightness.light,
-        scaffoldBackgroundColor: Colors.transparent,
+        scaffoldBackgroundColor: const Color(0xFFFDFDFB),
       ),
       darkTheme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: Colors.transparent,
+        scaffoldBackgroundColor: const Color(0xFF181A1E),
       ),
       home: PanelScreen(
         model: widget.model,
