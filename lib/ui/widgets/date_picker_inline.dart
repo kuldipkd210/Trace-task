@@ -78,13 +78,12 @@ class DatePickerInlineState extends State<DatePickerInline> {
     });
   }
 
-  void toggleTime() {
+  void clearTime() {
     setState(() {
-      _hasTime = !_hasTime;
-      if (_hasTime) {
-        _segment = DatePickSegment.time;
-      }
-      widget.onChanged(DatePick(date: _currentDate, hasTime: _hasTime));
+      _hasTime = false;
+      _segment = DatePickSegment.date;
+      widget.onChanged(DatePick(date: _currentDate, hasTime: false));
+      widget.onSegmentChanged?.call(DatePickSegment.date);
     });
   }
 
@@ -109,7 +108,7 @@ class DatePickerInlineState extends State<DatePickerInline> {
             borderRadius: BorderRadius.circular(4),
             child: Container(
               height: 28,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 7),
               decoration: BoxDecoration(
                 color: theme.surface,
                 borderRadius: BorderRadius.circular(4),
@@ -135,7 +134,7 @@ class DatePickerInlineState extends State<DatePickerInline> {
                     size: 13,
                     color: isDateActive ? theme.accent : theme.secondary,
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 5),
                   Text(
                     dateStr,
                     style: TextStyle(
@@ -145,7 +144,7 @@ class DatePickerInlineState extends State<DatePickerInline> {
                       color: isDateActive ? theme.ink : theme.ink.withOpacity(0.85),
                     ),
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 2),
                   InkWell(
                     onTap: () => shiftDay(-1),
                     child: Icon(Icons.arrow_drop_down, size: 16, color: theme.secondary),
@@ -161,13 +160,13 @@ class DatePickerInlineState extends State<DatePickerInline> {
 
           const SizedBox(width: 8),
 
-          // 2. TIME BOX
+          // 2. TIME BOX (NO separate checkbox)
           InkWell(
             onTap: () => setSegment(DatePickSegment.time),
             borderRadius: BorderRadius.circular(4),
             child: Container(
               height: 28,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 7),
               decoration: BoxDecoration(
                 color: theme.surface,
                 borderRadius: BorderRadius.circular(4),
@@ -193,9 +192,9 @@ class DatePickerInlineState extends State<DatePickerInline> {
                     size: 13,
                     color: isTimeActive ? theme.accent : theme.secondary,
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 5),
                   Text(
-                    _hasTime ? timeStr : 'No time',
+                    _hasTime ? timeStr : '+ Time',
                     style: TextStyle(
                       fontSize: 12,
                       fontFamily: 'monospace',
@@ -206,7 +205,7 @@ class DatePickerInlineState extends State<DatePickerInline> {
                     ),
                   ),
                   if (_hasTime) ...[
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 2),
                     InkWell(
                       onTap: () => shiftTime(-30),
                       child: Icon(Icons.arrow_drop_down, size: 16, color: theme.secondary),
@@ -215,33 +214,15 @@ class DatePickerInlineState extends State<DatePickerInline> {
                       onTap: () => shiftTime(30),
                       child: Icon(Icons.arrow_drop_up, size: 16, color: theme.secondary),
                     ),
+                    const SizedBox(width: 2),
+                    InkWell(
+                      onTap: clearTime,
+                      child: Tooltip(
+                        message: 'Remove time',
+                        child: Icon(Icons.close, size: 13, color: theme.secondary),
+                      ),
+                    ),
                   ],
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(width: 8),
-
-          // 3. TIME TOGGLE CHECKBOX
-          InkWell(
-            onTap: toggleTime,
-            borderRadius: BorderRadius.circular(4),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    _hasTime ? Icons.check_box_outlined : Icons.check_box_outline_blank,
-                    size: 15,
-                    color: _hasTime ? theme.accent : theme.secondary,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Time',
-                    style: TextStyle(fontSize: 11, color: theme.ink),
-                  ),
                 ],
               ),
             ),
@@ -249,7 +230,7 @@ class DatePickerInlineState extends State<DatePickerInline> {
 
           const Spacer(),
 
-          // 4. KEYBOARD HINT
+          // 3. KEYBOARD HINT (Compact, no overflow)
           Text(
             '↩ set · ^D Date · ^T Time · Esc',
             style: TextStyle(

@@ -28,7 +28,6 @@ class PanelScreen extends StatefulWidget {
 class _PanelScreenState extends State<PanelScreen> {
   final TextEditingController _inputController = TextEditingController();
   final FocusNode _inputFocusNode = FocusNode();
-  final FocusNode _screenFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
 
   DatePickSegment _datePickSegment = DatePickSegment.date;
@@ -40,6 +39,12 @@ class _PanelScreenState extends State<PanelScreen> {
   void initState() {
     super.initState();
     widget.model.addListener(_onModelUpdated);
+
+    // Register global keyboard handler so shortcuts like Ctrl+/ work anywhere in the app
+    HardwareKeyboard.instance.addHandler(_onGlobalRawKeyEvent);
+
+    // Custom key event interceptor directly on input box
+    _inputFocusNode.onKeyEvent = _handleInputKeyEvent;
 
     // Ensure input is always focused whenever window is shown or focused
     WindowService.instance.onWindowShown = _focusInput;
@@ -72,10 +77,10 @@ class _PanelScreenState extends State<PanelScreen> {
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onGlobalRawKeyEvent);
     widget.model.removeListener(_onModelUpdated);
     _inputController.dispose();
     _inputFocusNode.dispose();
-    _screenFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -123,19 +128,88 @@ class _PanelScreenState extends State<PanelScreen> {
     widget.onAppearanceChange(next);
   }
 
-  KeyEventResult _handleGlobalKeyEvent(FocusNode node, KeyEvent event) {
+  /// Intercepts keys while typing in the input box so arrow navigation works simultaneously
+  KeyEventResult _handleInputKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    // Up / Down arrow keys simultaneously navigate the task list without losing input focus
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      if (widget.model.datePick != null) {
+        if (_datePickSegment == DatePickSegment.date) {
+          widget.model.shiftDatePickDay(-1);
+        } else {
+          widget.model.shiftDatePickTime(-30);
+        }
+      } else {
+        widget.model.selectNext();
+      }
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      if (widget.model.datePick != null) {
+        if (_datePickSegment == DatePickSegment.date) {
+          widget.model.shiftDatePickDay(1);
+        } else {
+          widget.model.shiftDatePickTime(30);
+        }
+      } else {
+        widget.model.selectPrevious();
+      }
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  /// Global handler: catches shortcuts regardless of whether input is focused or not
+  bool _onGlobalRawKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
 
     final isControl = HardwareKeyboard.instance.isControlPressed ||
         (Platform.isMacOS && HardwareKeyboard.instance.isMetaPressed);
     final isShift = HardwareKeyboard.instance.isShiftPressed;
     final text = _inputController.text;
 
-    // A. Inline Date & Time Picker Controls (High Priority when open)
+    // 1. Esc: Cancel, Clear, or Close Window
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      if (widget.model.showingShortcuts) {
+        widget.model.toggleShortcuts();
+        return true;
+      }
+      if (widget.model.datePick != null) {
+        widget.model.cancelDatePick();
+        _focusInput();
+        return true;
+      }
+      if (widget.model.editingID != null) {
+        widget.model.cancelEditing();
+        _inputController.clear();
+        return true;
+      }
+      if (text.isNotEmpty) {
+        _inputController.clear();
+        widget.model.setText('');
+        return true;
+      }
+      WindowService.instance.hide();
+      return true;
+    }
+
+    // 2. Ctrl + / (All keys / shortcuts cheat sheet) - Works anywhere!
+    final isSlash = event.logicalKey == LogicalKeyboardKey.slash ||
+        event.logicalKey == LogicalKeyboardKey.numpadDivide ||
+        event.character == '/';
+    if (isControl && isSlash) {
+      widget.model.toggleShortcuts();
+      return true;
+    }
+
+    // 3. Inline Date & Time Picker Key Handling (when open)
     if (widget.model.datePick != null) {
       if (isControl && event.logicalKey == LogicalKeyboardKey.keyD) {
         setState(() => _datePickSegment = DatePickSegment.date);
-        return KeyEventResult.handled;
+        return true;
       }
       if (isControl && event.logicalKey == LogicalKeyboardKey.keyT) {
         setState(() {
@@ -144,11 +218,11 @@ class _PanelScreenState extends State<PanelScreen> {
             widget.model.toggleDatePickTime();
           }
         });
-        return KeyEventResult.handled;
+        return true;
       }
       if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
         setState(() => _datePickSegment = DatePickSegment.date);
-        return KeyEventResult.handled;
+        return true;
       }
       if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
         setState(() {
@@ -157,131 +231,70 @@ class _PanelScreenState extends State<PanelScreen> {
             widget.model.toggleDatePickTime();
           }
         });
-        return KeyEventResult.handled;
+        return true;
       }
-      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-        if (_datePickSegment == DatePickSegment.date) {
-          widget.model.shiftDatePickDay(1);
-        } else {
-          widget.model.shiftDatePickTime(30);
-        }
-        return KeyEventResult.handled;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-        if (_datePickSegment == DatePickSegment.date) {
-          widget.model.shiftDatePickDay(-1);
-        } else {
-          widget.model.shiftDatePickTime(-30);
-        }
-        return KeyEventResult.handled;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.enter) {
+      if (event.logicalKey == LogicalKeyboardKey.enter && !isShift && !isControl) {
         widget.model.commitDatePick();
         _focusInput();
-        return KeyEventResult.handled;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.escape) {
-        widget.model.cancelDatePick();
-        _focusInput();
-        return KeyEventResult.handled;
+        return true;
       }
     }
 
-    // B. Esc: Cancel, Clear, or Close Window
-    if (event.logicalKey == LogicalKeyboardKey.escape) {
-      if (widget.model.showingShortcuts) {
-        widget.model.toggleShortcuts();
-        return KeyEventResult.handled;
-      }
-      if (widget.model.editingID != null) {
-        widget.model.cancelEditing();
-        _inputController.clear();
-        return KeyEventResult.handled;
-      }
-      if (text.isNotEmpty) {
-        _inputController.clear();
-        widget.model.setText('');
-        return KeyEventResult.handled;
-      }
-      WindowService.instance.hide();
-      return KeyEventResult.handled;
+    // 4. Ctrl + Enter: Mark Selected Done
+    if (event.logicalKey == LogicalKeyboardKey.enter && isControl) {
+      widget.model.markSelectedDone();
+      return true;
     }
 
-    // C. Up & Down Arrow Navigation across tasks
-    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-      widget.model.selectNext();
-      return KeyEventResult.handled;
-    }
-    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-      widget.model.selectPrevious();
-      return KeyEventResult.handled;
-    }
-
-    // D. Enter Keys
-    if (event.logicalKey == LogicalKeyboardKey.enter) {
-      if (isControl) {
-        widget.model.markSelectedDone();
-        return KeyEventResult.handled;
-      }
-
-      if (isShift) {
-        final trimmed = text.trim();
-        if (trimmed.isNotEmpty) {
-          widget.model.setText(trimmed);
-          widget.model.submit();
-          _inputController.clear();
-          _focusInput();
-        }
-        return KeyEventResult.handled;
-      }
-
-      // Plain Enter
+    // 5. Shift + Enter: Add task and stay open
+    if (event.logicalKey == LogicalKeyboardKey.enter && isShift && !isControl) {
       final trimmed = text.trim();
       if (trimmed.isNotEmpty) {
         widget.model.setText(trimmed);
-        final effect = widget.model.submit();
+        widget.model.submit();
         _inputController.clear();
-        if (effect == PanelEffect.close) {
-          WindowService.instance.hide();
-        }
-        return KeyEventResult.handled;
-      } else if (widget.model.selectedID != null) {
-        widget.model.markSelectedDone();
-        return KeyEventResult.handled;
+        _focusInput();
       }
+      return true;
     }
 
-    // E. Delete & Backspace
+    // 6. Delete key: Deletes the selected task (BACKSPACE IS NOT USED TO DELETE TASKS!)
     if (event.logicalKey == LogicalKeyboardKey.delete) {
       widget.model.deleteSelected();
-      return KeyEventResult.handled;
+      return true;
     }
-    if (event.logicalKey == LogicalKeyboardKey.backspace) {
-      if (isControl || text.isEmpty) {
-        widget.model.deleteSelected();
-        return KeyEventResult.handled;
+
+    // Note: Backspace is deliberately NOT used to delete tasks!
+
+    // 7. Arrow keys when focus is NOT in input box
+    if (!_inputFocusNode.hasFocus) {
+      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+        widget.model.selectNext();
+        return true;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+        widget.model.selectPrevious();
+        return true;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.space && text.isEmpty) {
+        widget.model.markSelectedDone();
+        return true;
       }
     }
 
-    // F. Space when input is empty -> Toggle Done
-    if (event.logicalKey == LogicalKeyboardKey.space && text.isEmpty) {
-      widget.model.markSelectedDone();
-      return KeyEventResult.handled;
-    }
-
-    // G. Ctrl Shortcuts
+    // 8. Ctrl Shortcuts (Works anywhere)
     if (isControl) {
       if (event.logicalKey == LogicalKeyboardKey.digit1) {
         widget.model.setBucketOverride(Bucket.today);
-        return KeyEventResult.handled;
+        return true;
       }
       if (event.logicalKey == LogicalKeyboardKey.digit2) {
         widget.model.setBucketOverride(Bucket.week);
-        return KeyEventResult.handled;
+        return true;
       }
       if (event.logicalKey == LogicalKeyboardKey.digit3) {
         widget.model.setBucketOverride(Bucket.month);
-        return KeyEventResult.handled;
+        return true;
       }
       if (event.logicalKey == LogicalKeyboardKey.keyD) {
         if (widget.model.datePick == null) {
@@ -290,7 +303,7 @@ class _PanelScreenState extends State<PanelScreen> {
         } else {
           widget.model.cancelDatePick();
         }
-        return KeyEventResult.handled;
+        return true;
       }
       if (event.logicalKey == LogicalKeyboardKey.keyT) {
         if (widget.model.datePick == null) {
@@ -304,36 +317,32 @@ class _PanelScreenState extends State<PanelScreen> {
             }
           });
         }
-        return KeyEventResult.handled;
+        return true;
       }
       if (event.logicalKey == LogicalKeyboardKey.keyE && widget.model.selectedID != null) {
         widget.model.startEditing(widget.model.selectedID!);
         _focusInput();
-        return KeyEventResult.handled;
+        return true;
       }
       if (event.logicalKey == LogicalKeyboardKey.keyP) {
         widget.model.togglePinSelected();
-        return KeyEventResult.handled;
+        return true;
       }
       if (event.logicalKey == LogicalKeyboardKey.keyS) {
         widget.model.snoozeSelected(15);
-        return KeyEventResult.handled;
+        return true;
       }
       if (event.logicalKey == LogicalKeyboardKey.keyL) {
         _toggleTheme();
-        return KeyEventResult.handled;
+        return true;
       }
       if (event.logicalKey == LogicalKeyboardKey.keyZ) {
         widget.model.undo();
-        return KeyEventResult.handled;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.slash) {
-        widget.model.toggleShortcuts();
-        return KeyEventResult.handled;
+        return true;
       }
     }
 
-    return KeyEventResult.ignored;
+    return false;
   }
 
   @override
@@ -343,94 +352,89 @@ class _PanelScreenState extends State<PanelScreen> {
       builder: (context, _) {
         final theme = AppTheme.of(context);
 
-        return Focus(
-          focusNode: _screenFocusNode,
-          autofocus: false,
-          onKeyEvent: _handleGlobalKeyEvent,
-          child: Scaffold(
-            backgroundColor: Colors.transparent,
-            body: Center(
-              child: Stack(
-                clipBehavior: Clip.none,
-                alignment: Alignment.topCenter,
-                children: [
-                  // Main Panel Surface (Identical geometry in both Light and Dark modes)
-                  Container(
-                    margin: const EdgeInsets.only(top: 10),
-                    decoration: BoxDecoration(
-                      color: theme.surface,
-                      borderRadius: BorderRadius.circular(theme.cornerRadius),
-                      border: Border.all(
-                        color: theme.divider,
-                        width: 1,
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Center(
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.topCenter,
+              children: [
+                // Main Panel Surface (Identical geometry in both Light and Dark modes)
+                Container(
+                  margin: const EdgeInsets.only(top: 10),
+                  decoration: BoxDecoration(
+                    color: theme.surface,
+                    borderRadius: BorderRadius.circular(theme.cornerRadius),
+                    border: Border.all(
+                      color: theme.divider,
+                      width: 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.45 : 0.18),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.45 : 0.18),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(theme.cornerRadius),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Input Bar + Live Preview
+                        QuickCaptureInput(
+                          model: widget.model,
+                          controller: _inputController,
+                          focusNode: _inputFocusNode,
+                          onToggleTheme: _toggleTheme,
+                          onToggleShortcuts: widget.model.toggleShortcuts,
                         ),
+
+                        // Inline Date & Time Picker (No checkbox, no overflow)
+                        if (widget.model.datePick != null)
+                          DatePickerInline(
+                            pick: widget.model.datePick!,
+                            activeSegment: _datePickSegment,
+                            onChanged: widget.model.updateDatePick,
+                            onSegmentChanged: (seg) => setState(() => _datePickSegment = seg),
+                            onCommit: () {
+                              widget.model.commitDatePick();
+                              _focusInput();
+                            },
+                            onCancel: () {
+                              widget.model.cancelDatePick();
+                              _focusInput();
+                            },
+                          ),
+
+                        // Task List or Shortcuts Sheet
+                        Flexible(
+                          child: widget.model.showingShortcuts
+                              ? ShortcutsSheet(onClose: widget.model.toggleShortcuts)
+                              : TaskListView(
+                                  model: widget.model,
+                                  scrollController: _scrollController,
+                                ),
+                        ),
+
+                        // Ruled Divider before footer
+                        Container(height: 1, color: theme.divider),
+
+                        // Spaced Index Card Footer (Identical in both Light and Dark)
+                        _buildFooter(theme),
                       ],
                     ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(theme.cornerRadius),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Input Bar + Live Preview
-                          QuickCaptureInput(
-                            model: widget.model,
-                            controller: _inputController,
-                            focusNode: _inputFocusNode,
-                            onToggleTheme: _toggleTheme,
-                            onToggleShortcuts: widget.model.toggleShortcuts,
-                          ),
-
-                          // Inline Date & Time Picker (Ctrl+D and Ctrl+T)
-                          if (widget.model.datePick != null)
-                            DatePickerInline(
-                              pick: widget.model.datePick!,
-                              activeSegment: _datePickSegment,
-                              onChanged: widget.model.updateDatePick,
-                              onSegmentChanged: (seg) => setState(() => _datePickSegment = seg),
-                              onCommit: () {
-                                widget.model.commitDatePick();
-                                _focusInput();
-                              },
-                              onCancel: () {
-                                widget.model.cancelDatePick();
-                                _focusInput();
-                              },
-                            ),
-
-                          // Task List or Shortcuts Sheet
-                          Flexible(
-                            child: widget.model.showingShortcuts
-                                ? ShortcutsSheet(onClose: widget.model.toggleShortcuts)
-                                : TaskListView(
-                                    model: widget.model,
-                                    scrollController: _scrollController,
-                                  ),
-                          ),
-
-                          // Ruled Divider before footer
-                          Container(height: 1, color: theme.divider),
-
-                          // Spaced Index Card Footer (Identical in both Light and Dark)
-                          _buildFooter(theme),
-                        ],
-                      ),
-                    ),
                   ),
+                ),
 
-                  // Red Tack Pin (Present in BOTH Light and Dark modes)
-                  Positioned(
-                    top: 1,
-                    child: _buildTackPin(theme),
-                  ),
-                ],
-              ),
+                // Red Tack Pin (Present in BOTH Light and Dark modes)
+                Positioned(
+                  top: 1,
+                  child: _buildTackPin(theme),
+                ),
+              ],
             ),
           ),
         );
