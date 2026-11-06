@@ -1,5 +1,7 @@
 name: tracetask
-description: "A new Flutter project."
+description: "A keyboard-first desktop task manager with NLP and live voice dictation."
+homepage: "https://github.com/kuldipkd210/Trace-task"
+repository: "https://github.com/kuldipkd210/Trace-task"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -67,6 +69,7 @@ flutter:
 
   assets:
     - assets/app_icon.png
+    - assets/app_icon_red.png
     - assets/app_icon.ico
 
   # An image asset can refer to one or more resolution-specific "variants", see

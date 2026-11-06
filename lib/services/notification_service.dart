@@ -21,5 +21,15 @@ class NotificationService {
     );
     await notification.show();
   }
+
+  Future<void> showTaskCompleted({
+    required String title,
+  }) async {
+    final notification = LocalNotification(
+      title: '✓ Task Completed',
+      body: title,
+    );
+    await notification.show();
+  }
 }
 

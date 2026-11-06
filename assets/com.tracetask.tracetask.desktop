@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=TraceTask
+GenericName=Task Tracker
+Comment=Minimalist, distraction-free desktop task tracker
+Exec=tracetask
+Icon=tracetask
+Terminal=false
+Categories=Utility;Office;Productivity;
+Keywords=task;todo;track;notes;tack;
+StartupNotify=true
+

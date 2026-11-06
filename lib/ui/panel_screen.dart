@@ -31,7 +31,7 @@ class _PanelScreenState extends State<PanelScreen> {
   final ScrollController _scrollController = ScrollController();
 
   DatePickSegment _datePickSegment = DatePickSegment.date;
-  int _lastItemCount = -1;
+  int _lastOpenCount = -1;
   bool _lastDatePickerOpen = false;
   bool _lastShortcutsOpen = false;
 
@@ -98,25 +98,40 @@ class _PanelScreenState extends State<PanelScreen> {
   }
 
   void _checkAndAdjustHeight({bool force = false}) {
-    final currentCount = widget.model.store.items.length;
+    final allOpen = widget.model.store.items.where((i) => i.isOpen).toList();
+    final currentCount = allOpen.length;
     final dateOpen = widget.model.datePick != null;
     final shortcutsOpen = widget.model.showingShortcuts;
 
     if (force ||
-        currentCount != _lastItemCount ||
+        currentCount != _lastOpenCount ||
         dateOpen != _lastDatePickerOpen ||
         shortcutsOpen != _lastShortcutsOpen) {
-      _lastItemCount = currentCount;
+      _lastOpenCount = currentCount;
       _lastDatePickerOpen = dateOpen;
       _lastShortcutsOpen = shortcutsOpen;
 
-      final baseHeight = shortcutsOpen ? 340.0 : 160.0;
-      final rowHeight = 34.0;
-      final datePickerHeight = dateOpen ? 44.0 : 0.0;
-      final target = (baseHeight + (currentCount * rowHeight) + datePickerHeight)
-          .clamp(WindowService.minPanelHeight, WindowService.maxPanelHeight);
+      final datePickerHeight = dateOpen ? 40.0 : 0.0;
+      double target;
 
-      WindowService.instance.resize(target);
+      if (shortcutsOpen) {
+        target = 410.0;
+      } else if (currentCount == 0) {
+        // 10 (top pin margin) + 84 (input) + 60 (empty text) + 1 (divider) + 32 (footer) + 6 (buffer)
+        target = 193.0 + datePickerHeight;
+      } else {
+        // Count active groups (PINNED vs unpinned)
+        final hasPinned = allOpen.any((i) => i.pinned);
+        final hasUnpinned = allOpen.any((i) => !i.pinned);
+        final groupHeadersCount = (hasPinned ? 1 : 0) + (hasUnpinned ? 1 : 0);
+
+        // 10 (top pin margin) + 84 (input) + 1 (divider) + 32 (footer) + 6 (buffer) = 133.0
+        // + group headers (28px each) + task rows (each row ~36px + 1px divider = 37px)
+        target = 133.0 + (groupHeadersCount * 28.0) + (currentCount * 37.0) + datePickerHeight;
+      }
+
+      final clamped = target.clamp(WindowService.minPanelHeight, WindowService.maxPanelHeight);
+      WindowService.instance.resize(clamped);
     }
   }
 
@@ -130,7 +145,24 @@ class _PanelScreenState extends State<PanelScreen> {
 
   /// Intercepts keys while typing in the input box so arrow navigation works simultaneously
   KeyEventResult _handleInputKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+
+    final isShift = HardwareKeyboard.instance.isShiftPressed;
+    final isControl = HardwareKeyboard.instance.isControlPressed;
+
+    // Shift + Enter inside input box: Submit task and stay open for batch entry!
+    if (event.logicalKey == LogicalKeyboardKey.enter && isShift && !isControl) {
+      final trimmed = _inputController.text.trim();
+      if (trimmed.isNotEmpty) {
+        widget.model.setText(trimmed);
+        widget.model.submit(stayOpen: true);
+        _inputController.clear();
+        _focusInput();
+      }
+      return KeyEventResult.handled;
+    }
 
     // Up / Down arrow keys simultaneously navigate the task list without losing input focus
     if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
@@ -164,15 +196,28 @@ class _PanelScreenState extends State<PanelScreen> {
 
   /// Global handler: catches shortcuts regardless of whether input is focused or not
   bool _onGlobalRawKeyEvent(KeyEvent event) {
-    if (event is! KeyDownEvent) return false;
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return false;
+
+    // During key repeat (holding down a key), only allow arrow navigation / stepping
+    if (event is KeyRepeatEvent) {
+      final isArrow = event.logicalKey == LogicalKeyboardKey.arrowDown ||
+          event.logicalKey == LogicalKeyboardKey.arrowUp ||
+          event.logicalKey == LogicalKeyboardKey.arrowLeft ||
+          event.logicalKey == LogicalKeyboardKey.arrowRight;
+      if (!isArrow) return false;
+    }
 
     final isControl = HardwareKeyboard.instance.isControlPressed ||
         (Platform.isMacOS && HardwareKeyboard.instance.isMetaPressed);
     final isShift = HardwareKeyboard.instance.isShiftPressed;
     final text = _inputController.text;
 
-    // 1. Esc: Cancel, Clear, or Close Window
+    // 1. Esc: Cancel Dictation, Cancel, Clear, or Close Window
     if (event.logicalKey == LogicalKeyboardKey.escape) {
+      if (widget.model.isListening || widget.model.isTranscribing) {
+        widget.model.cancelDictation();
+        return true;
+      }
       if (widget.model.showingShortcuts) {
         widget.model.toggleShortcuts();
         return true;
@@ -251,7 +296,7 @@ class _PanelScreenState extends State<PanelScreen> {
       final trimmed = text.trim();
       if (trimmed.isNotEmpty) {
         widget.model.setText(trimmed);
-        widget.model.submit();
+        widget.model.submit(stayOpen: true);
         _inputController.clear();
         _focusInput();
       }
@@ -332,8 +377,19 @@ class _PanelScreenState extends State<PanelScreen> {
         widget.model.snoozeSelected(15);
         return true;
       }
+      final isPeriod = event.logicalKey == LogicalKeyboardKey.period ||
+          event.logicalKey == LogicalKeyboardKey.numpadDecimal ||
+          event.character == '.';
+      if (isPeriod) {
+        widget.model.toggleQuietMode();
+        return true;
+      }
       if (event.logicalKey == LogicalKeyboardKey.keyL) {
         _toggleTheme();
+        return true;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.keyM) {
+        widget.model.toggleDictation();
         return true;
       }
       if (event.logicalKey == LogicalKeyboardKey.keyZ) {
@@ -354,7 +410,8 @@ class _PanelScreenState extends State<PanelScreen> {
 
         return Scaffold(
           backgroundColor: Colors.transparent,
-          body: Center(
+          body: Align(
+            alignment: Alignment.topCenter,
             child: Stack(
               clipBehavior: Clip.none,
               alignment: Alignment.topCenter,
@@ -371,9 +428,9 @@ class _PanelScreenState extends State<PanelScreen> {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.45 : 0.18),
-                        blurRadius: 20,
-                        offset: const Offset(0, 8),
+                        color: Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.35 : 0.12),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),
@@ -478,6 +535,22 @@ class _PanelScreenState extends State<PanelScreen> {
   }
 
   Widget _buildFooter(AppTheme theme) {
+    if (widget.model.statusMessage != null) {
+      return Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 22),
+        alignment: Alignment.centerLeft,
+        child: Text(
+          widget.model.statusMessage!,
+          style: TextStyle(
+            fontSize: 11,
+            fontFamily: 'monospace',
+            color: theme.secondary,
+          ),
+        ),
+      );
+    }
+
     final mod = Platform.isMacOS ? '⌘' : '^';
 
     final keys = [

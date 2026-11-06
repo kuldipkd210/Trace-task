@@ -62,16 +62,37 @@ void main() async {
   void updateTrayAndAlerts() {
     try {
       final now = clock.now;
-      final state = MenuBarState.compute(store.items, now, cal);
+      final state = MenuBarState.compute(
+        store.items,
+        now,
+        cal,
+        quiet: model.quietMode,
+      );
       TrayService.instance.updateState(state);
 
-      for (final item in store.items) {
-        if (item.hasFired(now) && !notifiedTasks.contains(item.id)) {
-          notifiedTasks.add(item.id);
-          NotificationService.instance.showTimedTaskAlert(
-            title: item.title,
-            body: 'Task is due now',
-          );
+      final pinnedTasks = store.items.where((i) => i.isOpen && i.pinned).toList();
+      pinnedTasks.sort((a, b) {
+        if (a.sortOrder != null && b.sortOrder != null) {
+          final orderComp = a.sortOrder!.compareTo(b.sortOrder!);
+          if (orderComp != 0) return orderComp;
+        }
+        final timeA = a.dueAt ?? cal.dateOn(a.due, cal.rolloverHour);
+        final timeB = b.dueAt ?? cal.dateOn(b.due, cal.rolloverHour);
+        final timeComp = timeA.compareTo(timeB);
+        if (timeComp != 0) return timeComp;
+        return a.createdAt.compareTo(b.createdAt);
+      });
+      TrayService.instance.updateContextMenu(pinnedTasks: pinnedTasks, cal: cal);
+
+      if (!model.quietMode) {
+        for (final item in store.items) {
+          if (item.hasFired(now) && !notifiedTasks.contains(item.id)) {
+            notifiedTasks.add(item.id);
+            NotificationService.instance.showTimedTaskAlert(
+              title: item.title,
+              body: 'Task is due now',
+            );
+          }
         }
       }
     } catch (_) {}
@@ -82,10 +103,18 @@ void main() async {
       onToggle: () {
         WindowService.instance.toggle();
       },
-      onAppearance: (appearance) async {
-        await AppPaths.saveAppearance(appearance);
-        model.config.appearance = appearance;
-        await TrayService.instance.updateContextMenu(appearance);
+      onTaskSelect: (taskId) {
+        model.selectID(taskId);
+        WindowService.instance.show();
+      },
+      onTaskComplete: (taskId) {
+        final item = model.store.item(taskId);
+        if (item != null) {
+          model.markDone(taskId);
+          if (!model.quietMode) {
+            NotificationService.instance.showTaskCompleted(title: item.title);
+          }
+        }
       },
     );
   } catch (e) {
@@ -94,6 +123,7 @@ void main() async {
 
   updateTrayAndAlerts();
   store.addListener(updateTrayAndAlerts);
+  model.addListener(updateTrayAndAlerts);
   Timer.periodic(const Duration(seconds: 10), (_) => updateTrayAndAlerts());
 
   runApp(TraceTaskApp(model: model, initialConfig: config));
@@ -128,7 +158,6 @@ class _TraceTaskAppState extends State<TraceTaskApp> {
     });
     await AppPaths.saveAppearance(appearance);
     widget.model.config.appearance = appearance;
-    await TrayService.instance.updateContextMenu(appearance);
   }
 
   @override

@@ -12,7 +12,7 @@ class WindowService with WindowListener {
   bool autoHideOnBlur = false;
 
   static const double panelWidth = 560;
-  static const double minPanelHeight = 180;
+  static const double minPanelHeight = 140;
   static const double maxPanelHeight = 520;
 
   Future<void> initialize({VoidCallback? onBlur}) async {
@@ -21,7 +21,7 @@ class WindowService with WindowListener {
       await windowManager.ensureInitialized();
 
       const windowOptions = WindowOptions(
-        size: Size(panelWidth, 420),
+        size: Size(panelWidth, 240),
         minimumSize: Size(panelWidth, minPanelHeight),
         maximumSize: Size(panelWidth, maxPanelHeight),
         center: true,
@@ -69,10 +69,13 @@ class WindowService with WindowListener {
   Future<void> resize(double targetHeight) async {
     try {
       final clampedHeight = targetHeight.clamp(minPanelHeight, maxPanelHeight);
-      final size = await windowManager.getSize();
-      if ((size.height - clampedHeight).abs() > 2) {
-        await windowManager.setSize(Size(panelWidth, clampedHeight));
-      }
+      try {
+        final size = await windowManager.getSize();
+        if ((size.height - clampedHeight).abs() <= 2) {
+          return;
+        }
+      } catch (_) {}
+      await windowManager.setSize(Size(panelWidth, clampedHeight));
     } catch (_) {}
   }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/models/bucket.dart';
+import '../../core/models/item.dart';
 import '../../core/panel/panel_model.dart';
 import '../../core/parser/parser.dart';
 import '../theme/app_theme.dart';
@@ -45,151 +46,6 @@ class _TaskListViewState extends State<TaskListView> {
     });
   }
 
-  void _showContextMenu(BuildContext context, TapDownDetails details, TaskRow row) async {
-    final theme = AppTheme.of(context);
-    final item = row.item;
-
-    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
-    if (overlay == null) return;
-
-    widget.model.selectID(row.id);
-
-    final selected = await showMenu<String>(
-      context: context,
-      position: RelativeRect.fromRect(
-        details.globalPosition & const Size(40, 40),
-        Offset.zero & overlay.size,
-      ),
-      color: theme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(
-          color: theme.divider,
-          width: 1,
-        ),
-      ),
-      items: [
-        PopupMenuItem(
-          value: 'done',
-          height: 32,
-          child: Row(
-            children: [
-              Icon(
-                item.isOpen ? Icons.check_circle_outline : Icons.replay,
-                size: 16,
-                color: theme.ink,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                item.isOpen ? 'Mark Done (Ctrl+Enter)' : 'Mark Open',
-                style: TextStyle(color: theme.ink, fontSize: 13),
-              ),
-            ],
-          ),
-        ),
-        PopupMenuItem(
-          value: 'pin',
-          height: 32,
-          child: Row(
-            children: [
-              Icon(item.pinned ? Icons.push_pin : Icons.push_pin_outlined, size: 16, color: theme.ink),
-              const SizedBox(width: 8),
-              Text(item.pinned ? 'Unpin' : 'Pin to Top Bar (Ctrl+P)', style: TextStyle(color: theme.ink, fontSize: 13)),
-            ],
-          ),
-        ),
-        PopupMenuItem(
-          value: 'edit',
-          height: 32,
-          child: Row(
-            children: [
-              Icon(Icons.edit_outlined, size: 16, color: theme.ink),
-              const SizedBox(width: 8),
-              Text('Edit Title (Ctrl+E)', style: TextStyle(color: theme.ink, fontSize: 13)),
-            ],
-          ),
-        ),
-        const PopupMenuDivider(height: 8),
-        PopupMenuItem(
-          value: 'today',
-          height: 32,
-          child: Row(
-            children: [
-              Icon(Icons.wb_sunny_outlined, size: 16, color: theme.ink),
-              const SizedBox(width: 8),
-              Text('Move to Today (Ctrl+1)', style: TextStyle(color: theme.ink, fontSize: 13)),
-            ],
-          ),
-        ),
-        PopupMenuItem(
-          value: 'week',
-          height: 32,
-          child: Row(
-            children: [
-              Icon(Icons.date_range_outlined, size: 16, color: theme.ink),
-              const SizedBox(width: 8),
-              Text('Move to Week (Ctrl+2)', style: TextStyle(color: theme.ink, fontSize: 13)),
-            ],
-          ),
-        ),
-        PopupMenuItem(
-          value: 'month',
-          height: 32,
-          child: Row(
-            children: [
-              Icon(Icons.calendar_month_outlined, size: 16, color: theme.ink),
-              const SizedBox(width: 8),
-              Text('Move to Month (Ctrl+3)', style: TextStyle(color: theme.ink, fontSize: 13)),
-            ],
-          ),
-        ),
-        PopupMenuItem(
-          value: 'date',
-          height: 32,
-          child: Row(
-            children: [
-              Icon(Icons.access_time_rounded, size: 16, color: theme.ink),
-              const SizedBox(width: 8),
-              Text('Pick Date… (Ctrl+D)', style: TextStyle(color: theme.ink, fontSize: 13)),
-            ],
-          ),
-        ),
-        const PopupMenuDivider(height: 8),
-        PopupMenuItem(
-          value: 'delete',
-          height: 32,
-          child: Row(
-            children: [
-              const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
-              const SizedBox(width: 8),
-              const Text('Delete Task (Delete)', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
-            ],
-          ),
-        ),
-      ],
-    );
-
-    if (selected == null) return;
-    switch (selected) {
-      case 'done':
-        widget.model.markDone(row.id);
-      case 'pin':
-        widget.model.togglePin(row.id);
-      case 'edit':
-        widget.model.startEditing(row.id);
-      case 'today':
-        widget.model.move(row.id, Bucket.today);
-      case 'week':
-        widget.model.move(row.id, Bucket.week);
-      case 'month':
-        widget.model.move(row.id, Bucket.month);
-      case 'date':
-        widget.model.openDatePick();
-      case 'delete':
-        widget.model.delete(row.id);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -229,12 +85,24 @@ class _TaskListViewState extends State<TaskListView> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
-                _buildSectionHeader(group.bucket, group.rows.length, theme),
+                _buildSectionHeader(group, theme),
                 ...group.rows.map((row) {
                   final key = _itemKeys.putIfAbsent(row.id, () => GlobalKey());
-                  return Container(
+                  return Column(
                     key: key,
-                    child: _buildRow(row, group.bucket, theme),
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildRow(row, group, theme),
+                      // Thin dividing line after every task: blue in light mode, red in dark mode
+                      Container(
+                        height: 1,
+                        margin: const EdgeInsets.symmetric(horizontal: 22),
+                        color: theme.brightness == Brightness.dark
+                            ? const Color(0xFFE63946)
+                            : const Color(0xFF2563EB),
+                      ),
+                    ],
                   );
                 }),
               ],
@@ -245,16 +113,17 @@ class _TaskListViewState extends State<TaskListView> {
     );
   }
 
-  Widget _buildSectionHeader(Bucket bucket, int count, AppTheme theme) {
-    return Padding(
+  Widget _buildSectionHeader(TaskGroup group, AppTheme theme) {
+    return Container(
       padding: const EdgeInsets.only(
         left: 22,
         right: 22,
         top: 10,
         bottom: 4,
       ),
+      color: Colors.transparent,
       child: Text(
-        '${bucket.title.toUpperCase()} ($count)',
+        '${group.title.toUpperCase()} (${group.rows.length})',
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.bold,
@@ -265,16 +134,41 @@ class _TaskListViewState extends State<TaskListView> {
     );
   }
 
-  Widget _buildRow(TaskRow row, Bucket bucket, AppTheme theme) {
+  Widget _buildSnoozeBadge(Item item, AppTheme theme) {
+    final now = widget.model.clock.now;
+    if (item.snoozedUntil == null || !item.snoozedUntil!.isAfter(now)) {
+      return const SizedBox.shrink();
+    }
+    final minsLeft = item.snoozedUntil!.difference(now).inMinutes.clamp(1, 120);
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Text(
+        '${minsLeft}m snoozed',
+        style: TextStyle(
+          fontSize: 13,
+          fontFamily: 'monospace',
+          color: theme.secondary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRow(TaskRow row, TaskGroup group, AppTheme theme) {
     final isSelected = widget.model.selectedID == row.id;
     final isHovered = _hoveredRowId == row.id;
     final item = row.item;
+    final now = widget.model.clock.now;
+    final today = widget.model.cal.dayOf(now);
+
+    final isDelayed = item.isDelayed(now, today);
 
     String? lateNote;
-    if (row.overdueDays > 0 && row.isStale) {
-      lateNote = '${row.overdueDays}d late. Do, move or kill';
-    } else if (row.overdueDays > 0) {
-      lateNote = row.overdueDays == 1 ? '1 day late' : '${row.overdueDays} days late';
+    if (isDelayed) {
+      if (row.overdueDays > 0) {
+        lateNote = 'Delayed (${row.overdueDays}d)';
+      } else {
+        lateNote = 'Delayed';
+      }
     } else if (row.isStale) {
       lateNote = 'Do, move or kill';
     }
@@ -282,8 +176,8 @@ class _TaskListViewState extends State<TaskListView> {
     String? detail;
     if (item.dueAt != null) {
       final time = Parser.timeLabel(item.dueAt!, widget.model.cal);
-      detail = bucket == Bucket.today ? time : '${Parser.dayLabel(item.due, widget.model.cal)} $time';
-    } else if (bucket != Bucket.today && item.flex.name == 'none') {
+      detail = group.bucket == Bucket.today ? time : '${Parser.dayLabel(item.due, widget.model.cal)} $time';
+    } else if (item.hasExplicitDate && group.bucket != Bucket.today && item.flex.name == 'none') {
       detail = Parser.dayLabel(item.due, widget.model.cal);
     }
 
@@ -295,150 +189,116 @@ class _TaskListViewState extends State<TaskListView> {
         behavior: HitTestBehavior.opaque,
         onTap: () => widget.model.selectID(row.id),
         onDoubleTap: () => widget.model.startEditing(row.id),
-        onSecondaryTapDown: (details) => _showContextMenu(context, details, row),
         child: Container(
-          height: 34,
-          padding: const EdgeInsets.symmetric(horizontal: 22),
+          constraints: const BoxConstraints(minHeight: 34),
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 1.5),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: isHovered && !isSelected
-                ? (theme.brightness == Brightness.dark ? Colors.white.withOpacity(0.04) : Colors.black.withOpacity(0.03))
-                : Colors.transparent,
+            color: isSelected
+                ? theme.highlighter
+                : (isHovered
+                    ? (theme.brightness == Brightness.dark
+                        ? Colors.white.withOpacity(0.04)
+                        : Colors.black.withOpacity(0.03))
+                    : Colors.transparent),
+            borderRadius: BorderRadius.circular(6),
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. Checkbox circle
-              InkWell(
-                onTap: () => widget.model.markDone(row.id),
-                borderRadius: BorderRadius.circular(10),
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: Icon(
-                    item.isOpen ? Icons.circle_outlined : Icons.check_circle_rounded,
-                    size: 15,
-                    color: theme.secondary,
+              // Single Solid Dot: Centered vertically with the first line of task text
+              Container(
+                height: 23.25,
+                padding: const EdgeInsets.only(right: 10),
+                alignment: Alignment.center,
+                child: InkWell(
+                  onTap: () => widget.model.markDone(row.id),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: item.pinned
+                          ? theme.accent
+                          : (isDelayed
+                              ? theme.accent
+                              : (item.isOpen
+                                  ? (isSelected && theme.brightness == Brightness.dark
+                                      ? Colors.white.withOpacity(0.85)
+                                      : theme.secondary.withOpacity(0.65))
+                                  : theme.secondary.withOpacity(0.25))),
+                      shape: BoxShape.circle,
+                    ),
                   ),
                 ),
               ),
 
-              // 2. Red pushpin dot
-              if (item.pinned) ...[
-                Container(
-                  width: 9,
-                  height: 9,
-                  decoration: BoxDecoration(
-                    color: theme.accent,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
-
-              // 3. Task Title with Yellow Highlighter when selected
+              // Task Title (Red when delayed, 2 lines by default, expands on selection)
               Expanded(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: isSelected ? theme.highlighter : Colors.transparent,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                        child: Text(
-                          item.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontFamily: 'serif',
-                            fontWeight: FontWeight.normal,
-                            color: isSelected ? theme.highlighterInk : theme.ink,
-                          ),
-                        ),
-                      ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  child: Text(
+                    item.title,
+                    maxLines: isSelected ? null : 2,
+                    overflow: isSelected ? TextOverflow.visible : TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontFamily: 'serif',
+                      height: 1.25,
+                      fontWeight: isDelayed ? FontWeight.w600 : FontWeight.normal,
+                      color: isDelayed
+                          ? theme.accent
+                          : (isSelected ? theme.highlighterInk : theme.ink),
                     ),
-                  ],
+                  ),
                 ),
               ),
 
               const SizedBox(width: 8),
 
-              // 4. Overdue / Stale Note
-              if (lateNote != null) ...[
-                Text(
-                  lateNote,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontFamily: 'serif',
-                    fontStyle: FontStyle.italic,
-                    color: theme.warning,
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
+              // Trailing metadata & action icons aligned at top
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Overdue / Delayed Note (Red when delayed)
+                    if (lateNote != null) ...[
+                      Text(
+                        lateNote,
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontFamily: 'serif',
+                          fontStyle: FontStyle.italic,
+                          fontWeight: isDelayed ? FontWeight.bold : FontWeight.normal,
+                          color: isDelayed ? theme.accent : theme.warning,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
 
-              // 5. Date / Time Label
-              if (detail != null) ...[
-                Text(
-                  detail,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontFamily: 'monospace',
-                    color: theme.secondary,
-                  ),
-                ),
-                const SizedBox(width: 6),
-              ],
+                    // Snooze Badge if snoozed
+                    _buildSnoozeBadge(item, theme),
 
-              // 6. Mouse action icons on hover or selection
-              if (isHovered || isSelected) ...[
-                Tooltip(
-                  message: item.pinned ? 'Unpin' : 'Pin to Top Bar (Ctrl+P)',
-                  child: InkWell(
-                    onTap: () => widget.model.togglePin(row.id),
-                    borderRadius: BorderRadius.circular(10),
-                    child: Padding(
-                      padding: const EdgeInsets.all(4),
-                      child: Icon(
-                        item.pinned ? Icons.push_pin : Icons.push_pin_outlined,
-                        size: 14,
-                        color: item.pinned ? theme.accent : theme.secondary,
+                    // Date / Time Label (Increased font size)
+                    if (detail != null) ...[
+                      Text(
+                        detail,
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontFamily: 'monospace',
+                          color: isDelayed
+                              ? theme.accent
+                              : (isSelected && theme.brightness == Brightness.dark
+                                  ? const Color(0xFFC0C8D4)
+                                  : theme.secondary),
+                        ),
                       ),
-                    ),
-                  ),
+                      const SizedBox(width: 6),
+                    ],
+                  ],
                 ),
-                Tooltip(
-                  message: 'Edit title (Ctrl+E)',
-                  child: InkWell(
-                    onTap: () => widget.model.startEditing(row.id),
-                    borderRadius: BorderRadius.circular(10),
-                    child: Padding(
-                      padding: const EdgeInsets.all(4),
-                      child: Icon(
-                        Icons.edit_outlined,
-                        size: 14,
-                        color: theme.secondary,
-                      ),
-                    ),
-                  ),
-                ),
-                Tooltip(
-                  message: 'Delete task (Delete)',
-                  child: InkWell(
-                    onTap: () => widget.model.delete(row.id),
-                    borderRadius: BorderRadius.circular(10),
-                    child: const Padding(
-                      padding: EdgeInsets.all(4),
-                      child: Icon(
-                        Icons.delete_outline_rounded,
-                        size: 14,
-                        color: Colors.redAccent,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ],
           ),
         ),

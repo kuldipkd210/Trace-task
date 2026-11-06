@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
+import '../../services/dictation_service.dart';
 import '../config/config.dart';
 import '../models/bucket.dart';
 import '../models/date_pick.dart';
@@ -28,12 +30,19 @@ class TaskRow {
 }
 
 class TaskGroup {
-  final Bucket bucket;
+  final String title;
+  final Bucket? bucket;
+  final bool isPinned;
   final List<TaskRow> rows;
 
-  int get id => bucket.id;
+  String get id => title;
 
-  const TaskGroup({required this.bucket, required this.rows});
+  const TaskGroup({
+    required this.title,
+    this.bucket,
+    this.isPinned = false,
+    required this.rows,
+  });
 }
 
 class PanelModel extends ChangeNotifier {
@@ -47,9 +56,11 @@ class PanelModel extends ChangeNotifier {
   DatePick? _datePick;
   DatePick? _dateOverride;
   bool _showingShortcuts = false;
-  final bool _reviewMode = false;
-  bool _isListening = false;
   String? _dictationError;
+  String _textBeforeDictation = '';
+  bool _quietMode = false;
+  String? _statusMessage;
+  Timer? _statusTimer;
 
   PanelModel({
     required this.store,
@@ -75,6 +86,7 @@ class PanelModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _statusTimer?.cancel();
     store.removeListener(_onStoreUpdated);
     super.dispose();
   }
@@ -88,9 +100,12 @@ class PanelModel extends ChangeNotifier {
   DatePick? get datePick => _datePick;
   DatePick? get dateOverride => _dateOverride;
   bool get showingShortcuts => _showingShortcuts;
-  bool get reviewMode => _reviewMode;
-  bool get isListening => _isListening;
+  bool get isListening => DictationService.instance.isListening;
+  bool get isTranscribing => DictationService.instance.isTranscribing;
+  bool get isPreparing => false;
   String? get dictationError => _dictationError;
+  bool get quietMode => _quietMode;
+  String? get statusMessage => _statusMessage;
 
   TackClock get clock => store.clock;
   DayCalendar get cal => store.cal;
@@ -108,20 +123,58 @@ class PanelModel extends ChangeNotifier {
       );
     }
 
-    return [
+    final allOpen = store.items.where((i) => i.isOpen).toList();
+    final pinned = allOpen.where((i) => i.pinned).toList();
+
+    // Sort pinned items: earliest due date/time first!
+    pinned.sort((a, b) {
+      if (a.sortOrder != null && b.sortOrder != null) {
+        final orderComp = a.sortOrder!.compareTo(b.sortOrder!);
+        if (orderComp != 0) return orderComp;
+      }
+      final timeA = a.dueAt ?? cal.dateOn(a.due, cal.rolloverHour);
+      final timeB = b.dueAt ?? cal.dateOn(b.due, cal.rolloverHour);
+      final timeComp = timeA.compareTo(timeB);
+      if (timeComp != 0) return timeComp;
+      return a.createdAt.compareTo(b.createdAt);
+    });
+
+    final unpinned = allOpen.where((i) => !i.pinned).toList();
+    final result = <TaskGroup>[];
+
+    if (pinned.isNotEmpty) {
+      result.add(
+        TaskGroup(
+          title: 'PINNED',
+          isPinned: true,
+          rows: pinned.map(toRow).toList(),
+        ),
+      );
+    }
+
+    result.add(
       TaskGroup(
+        title: 'TODAY',
         bucket: Bucket.today,
-        rows: Ranker.today(store.items, now, cal).map(toRow).toList(),
+        rows: Ranker.today(unpinned, now, cal).map(toRow).toList(),
       ),
+    );
+    result.add(
       TaskGroup(
+        title: 'WEEK',
         bucket: Bucket.week,
-        rows: Ranker.later(store.items, Bucket.week, now, cal).map(toRow).toList(),
+        rows: Ranker.later(unpinned, Bucket.week, now, cal).map(toRow).toList(),
       ),
+    );
+    result.add(
       TaskGroup(
+        title: 'MONTH',
         bucket: Bucket.month,
-        rows: Ranker.later(store.items, Bucket.month, now, cal).map(toRow).toList(),
+        rows: Ranker.later(unpinned, Bucket.month, now, cal).map(toRow).toList(),
       ),
-    ];
+    );
+
+    return result;
   }
 
   List<String> get flatIDs => groups.expand((g) => g.rows.map((r) => r.id)).toList();
@@ -269,7 +322,24 @@ class PanelModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  PanelEffect submit() {
+  void showStatus(String message) {
+    _statusMessage = message;
+    _statusTimer?.cancel();
+    _statusTimer = Timer(const Duration(seconds: 3), () {
+      _statusMessage = null;
+      notifyListeners();
+    });
+    notifyListeners();
+  }
+
+  void toggleQuietMode() {
+    _quietMode = !_quietMode;
+    showStatus(_quietMode ? 'Quiet mode on' : 'Quiet mode off');
+    notifyListeners();
+  }
+
+  PanelEffect submit({bool stayOpen = false}) {
+    endDictation();
     final trimmed = _text.trim();
     if (trimmed.isEmpty) return PanelEffect.none;
 
@@ -288,7 +358,7 @@ class PanelModel extends ChangeNotifier {
     _dateOverride = null;
     _datePick = null;
     notifyListeners();
-    return PanelEffect.close;
+    return stayOpen ? PanelEffect.none : PanelEffect.close;
   }
 
   void markSelectedDone() {
@@ -331,6 +401,10 @@ class PanelModel extends ChangeNotifier {
   void togglePinSelected() {
     if (_selectedID != null) {
       store.togglePin(_selectedID!);
+      final item = store.item(_selectedID!);
+      if (item != null) {
+        showStatus(item.pinned ? 'Pinned "${item.title}"' : 'Unpinned "${item.title}"');
+      }
       notifyListeners();
     }
   }
@@ -338,14 +412,29 @@ class PanelModel extends ChangeNotifier {
   void togglePin(String id) {
     store.togglePin(id);
     _selectedID = id;
+    final item = store.item(id);
+    if (item != null) {
+      showStatus(item.pinned ? 'Pinned "${item.title}"' : 'Unpinned "${item.title}"');
+    }
     notifyListeners();
   }
 
   void snoozeSelected(int minutes) {
     if (_selectedID != null) {
-      store.snooze(_selectedID!, minutes);
-      notifyListeners();
+      snooze(_selectedID!, minutes);
     }
+  }
+
+  void snooze(String id, int minutes) {
+    store.snooze(id, minutes);
+    showStatus(minutes > 0 ? 'Snoozed for ${minutes}m' : 'Snooze cleared');
+    notifyListeners();
+  }
+
+  void reorderTasks(String movedId, String targetId, {bool insertBefore = true}) {
+    store.reorder(movedId, targetId, insertBefore: insertBefore);
+    _selectedID = movedId;
+    notifyListeners();
   }
 
   void moveSelected(Bucket bucket) {
@@ -362,10 +451,66 @@ class PanelModel extends ChangeNotifier {
   }
 
   void toggleDictation() {
-    _isListening = !_isListening;
-    if (_isListening) {
-      _dictationError = null;
+    _dictationError = null;
+    if (DictationService.instance.isListening) {
+      endDictation();
+    } else if (DictationService.instance.isTranscribing) {
+      // already transcribing
+    } else {
+      startDictation();
     }
+  }
+
+  void startDictation() {
+    _textBeforeDictation = _text;
+    _dictationError = null;
+    notifyListeners();
+
+    DictationService.instance.start(
+      onReady: () {
+        notifyListeners();
+      },
+      onResult: (transcribedText, isFinal) {
+        if (transcribedText.isNotEmpty) {
+          final prefix = _textBeforeDictation.trim();
+          _text = prefix.isEmpty ? transcribedText : '$prefix $transcribedText';
+          notifyListeners();
+        }
+      },
+      onError: (error) {
+        _dictationError = error;
+        notifyListeners();
+      },
+    );
+    notifyListeners();
+  }
+
+  void endDictation() {
+    if (!DictationService.instance.isListening) return;
+    notifyListeners();
+
+    DictationService.instance.stop(
+      onTranscribing: () {
+        notifyListeners();
+      },
+      onResult: (transcribedText, isFinal) {
+        if (transcribedText.isNotEmpty) {
+          final prefix = _textBeforeDictation.trim();
+          _text = prefix.isEmpty ? transcribedText : '$prefix $transcribedText';
+        }
+        notifyListeners();
+      },
+      onError: (error) {
+        _dictationError = error;
+        notifyListeners();
+      },
+    );
+  }
+
+  void cancelDictation() {
+    DictationService.instance.cancel();
+    _text = _textBeforeDictation;
+    _dictationError = null;
     notifyListeners();
   }
 

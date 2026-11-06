@@ -10,7 +10,6 @@ class ShortcutsSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = AppTheme.of(context);
-    final isCard = theme.style == ThemeStyle.card;
     final mod = Platform.isMacOS ? '⌘' : 'Ctrl+';
 
     final left = [
@@ -30,15 +29,16 @@ class ShortcutsSheet extends StatelessWidget {
       ('${mod}D', 'Pick a date and time'),
       ('${mod}T', 'Toggle time in date row'),
       ('${mod}L', 'Switch light / dark look'),
+      ('${mod}M', 'Dictate task with mic'),
       ('$mod.', 'Quiet mode (1 hr)'),
       ('Esc', 'Clear draft, then close'),
       ('$mod/', 'Show or hide this cheat sheet'),
     ];
 
-    final inset = isCard ? 22.0 : 18.0;
+    const inset = 22.0;
 
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: inset, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: inset, vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -46,7 +46,7 @@ class ShortcutsSheet extends StatelessWidget {
           Row(
             children: [
               Text(
-                isCard ? 'ALL KEYS' : 'All keys',
+                'ALL KEYS',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,

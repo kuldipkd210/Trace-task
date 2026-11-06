@@ -1,5 +1,9 @@
 # TraceTask
 
+[![Build](https://github.com/kuldipkd210/Trace-task/actions/workflows/build.yml/badge.svg)](https://github.com/kuldipkd210/Trace-task/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+![Platforms](https://img.shields.io/badge/Platforms-Linux%20%7C%20macOS%20%7C%20Windows-blue)
+
 > **Keyboard-driven task tracker for fast context switchers.**  
 > Capture in one hotkey, organize effortlessly into logical workdays, and let tasks surface when they need attention. Built natively for **Ubuntu Linux, macOS, and Windows** with a single unified Flutter codebase.
 
@@ -97,3 +101,8 @@ TraceTask includes a [GitHub Actions workflow](.github/workflows/build.yml) that
 - **macOS**: `tracetask-macos.zip` (`TraceTask.app`)
 - **Windows**: `tracetask-windows-x64.zip` (`.exe`)
 
+---
+
+## 📄 License
+
+This project is open-source under the [MIT License](LICENSE).

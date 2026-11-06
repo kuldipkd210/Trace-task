@@ -13,7 +13,7 @@ class Ranker {
         item.dueAt!.difference(now).inSeconds <= 3600) {
       return 2;
     }
-    if (item.due < today) return 3;
+    if (item.isDelayed(now, today)) return 3;
     if (item.dueAt != null && item.dueAt!.isAfter(now)) return 5;
     return 4;
   }
@@ -31,6 +31,11 @@ class Ranker {
       final rankA = _rank(a, now, day);
       final rankB = _rank(b, now, day);
       if (rankA != rankB) return rankA.compareTo(rankB);
+
+      if (a.sortOrder != null && b.sortOrder != null) {
+        final orderComp = a.sortOrder!.compareTo(b.sortOrder!);
+        if (orderComp != 0) return orderComp;
+      }
 
       final keyA = _sortKey(a);
       final keyB = _sortKey(b);
@@ -55,6 +60,11 @@ class Ranker {
         .toList();
 
     filtered.sort((a, b) {
+      if (a.sortOrder != null && b.sortOrder != null) {
+        final orderComp = a.sortOrder!.compareTo(b.sortOrder!);
+        if (orderComp != 0) return orderComp;
+      }
+
       final dueComp = a.due.compareTo(b.due);
       if (dueComp != 0) return dueComp;
 

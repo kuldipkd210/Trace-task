@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/panel/panel_model.dart';
 import '../../services/window_service.dart';
 import '../theme/app_theme.dart';
@@ -70,12 +71,13 @@ class QuickCaptureInput extends StatelessWidget {
                         model.setText(text);
                       },
                       onSubmitted: (text) {
+                        final isShift = HardwareKeyboard.instance.isShiftPressed;
                         final trimmed = text.trim();
                         if (trimmed.isNotEmpty) {
                           model.setText(trimmed);
-                          final effect = model.submit();
+                          final effect = model.submit(stayOpen: isShift);
                           controller.clear();
-                          if (effect == PanelEffect.close) {
+                          if (!isShift && effect == PanelEffect.close) {
                             WindowService.instance.hide();
                           }
                         }
@@ -109,7 +111,9 @@ class QuickCaptureInput extends StatelessWidget {
 
                   // Mic Dictation Button
                   Tooltip(
-                    message: model.isListening ? 'Stop dictating' : 'Dictate',
+                    message: model.isListening
+                        ? 'Finish dictating (Ctrl+M)'
+                        : (model.isTranscribing ? 'Transcribing…' : 'Dictate (Ctrl+M)'),
                     child: InkWell(
                       onTap: () => model.toggleDictation(),
                       borderRadius: BorderRadius.circular(16),
@@ -119,12 +123,18 @@ class QuickCaptureInput extends StatelessWidget {
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: model.isListening ? theme.accent : Colors.transparent,
+                          color: (model.isListening || model.isTranscribing)
+                              ? theme.accent
+                              : Colors.transparent,
                         ),
                         child: Icon(
-                          model.isListening ? Icons.mic : Icons.mic_none_outlined,
+                          (model.isListening || model.isTranscribing)
+                              ? Icons.mic
+                              : Icons.mic_none_outlined,
                           size: 16,
-                          color: model.isListening ? Colors.white : theme.secondary,
+                          color: (model.isListening || model.isTranscribing)
+                              ? Colors.white
+                              : theme.secondary,
                         ),
                       ),
                     ),
@@ -174,15 +184,41 @@ class QuickCaptureInput extends StatelessWidget {
   }
 
   Widget _buildStatusLine(AppTheme theme) {
-    if (model.isListening) {
+    if (model.dictationError != null) {
       return Text(
-        'Listening… speak your task',
+        model.dictationError!,
+        style: TextStyle(
+          fontSize: 13,
+          fontFamily: 'serif',
+          fontStyle: FontStyle.italic,
+          fontWeight: FontWeight.w500,
+          color: theme.accent,
+        ),
+      );
+    }
+
+    if (model.isTranscribing) {
+      return Text(
+        'Transcribing with Whisper Large v3…',
         style: TextStyle(
           fontSize: 13,
           fontFamily: 'serif',
           fontStyle: FontStyle.italic,
           fontWeight: FontWeight.w500,
           color: theme.warning,
+        ),
+      );
+    }
+
+    if (model.isListening) {
+      return Text(
+        'Listening… speak your task (Ctrl+M to finish)',
+        style: TextStyle(
+          fontSize: 13,
+          fontFamily: 'serif',
+          fontStyle: FontStyle.italic,
+          fontWeight: FontWeight.w500,
+          color: theme.accent,
         ),
       );
     }

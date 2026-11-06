@@ -23,6 +23,7 @@ class Sections {
   }
 
   static int overdueDays(Item item, Day today, DayCalendar cal) {
+    if (!item.hasExplicitDate) return 0;
     return max(0, cal.daysBetween(item.due, today));
   }
 

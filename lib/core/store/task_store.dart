@@ -6,6 +6,7 @@ import '../models/bucket.dart';
 import '../models/date_pick.dart';
 import '../models/flex.dart';
 import '../models/item.dart';
+import '../models/sections.dart';
 import '../parser/parser.dart';
 import '../time/day.dart';
 import '../time/day_calendar.dart';
@@ -55,6 +56,7 @@ class TaskStore extends ChangeNotifier {
       due: parsed.due,
       dueAt: parsed.dueAt,
       flex: parsed.flex,
+      hasExplicitDate: parsed.hasDate || parsed.dueAt != null,
       createdAt: now,
     );
 
@@ -84,19 +86,52 @@ class TaskStore extends ChangeNotifier {
       item.due = resolved.due;
       item.dueAt = resolved.dueAt;
       item.flex = Flex.none;
+      item.hasExplicitDate = true;
       item.snoozedUntil = null;
       item.plannedAt = clock.now;
     });
   }
 
   void togglePin(String id) {
-    final current = item(id);
-    final turningOn = current?.pinned == false;
+    _change(id, (item) {
+      item.pinned = !item.pinned;
+    });
+  }
+
+  void reorder(String movedId, String targetId, {bool insertBefore = true}) {
+    if (movedId == targetId) return;
 
     _mutate((items) {
+      final movedIdx = items.indexWhere((i) => i.id == movedId);
+      final targetIdx = items.indexWhere((i) => i.id == targetId);
+      if (movedIdx == -1 || targetIdx == -1) return;
+
+      final moved = items[movedIdx];
+      final target = items[targetIdx];
+
+      final today = cal.dayOf(clock.now);
+      if (target.pinned && !moved.pinned) {
+        moved.pinned = true;
+      } else if (!target.pinned && moved.pinned) {
+        moved.pinned = false;
+        _place(moved, Sections.bucketOf(target, today, cal));
+      } else if (!target.pinned && !moved.pinned) {
+        final targetBucket = Sections.bucketOf(target, today, cal);
+        final movedBucket = Sections.bucketOf(moved, today, cal);
+        if (targetBucket != movedBucket) {
+          _place(moved, targetBucket);
+        }
+      }
+
+      // Reorder items directly in items list
+      items.removeAt(movedIdx);
+      final newTargetIdx = items.indexWhere((i) => i.id == targetId);
+      final insertIdx = (insertBefore ? newTargetIdx : newTargetIdx + 1).clamp(0, items.length);
+      items.insert(insertIdx, moved);
+
+      // Update explicit sortOrder on all items
       for (var i = 0; i < items.length; i++) {
-        // Only one task can hold the pin at a time.
-        items[i].pinned = turningOn && items[i].id == id;
+        items[i].sortOrder = i.toDouble();
       }
     });
   }
@@ -110,10 +145,11 @@ class TaskStore extends ChangeNotifier {
   void edit(String id, ParsedTask parsed, {Bucket? bucket}) {
     _change(id, (item) {
       item.title = parsed.title;
-      if (parsed.hasDate) {
+      if (parsed.hasDate || parsed.dueAt != null) {
         item.due = parsed.due;
         item.dueAt = parsed.dueAt;
         item.flex = parsed.flex;
+        item.hasExplicitDate = true;
         item.snoozedUntil = null;
         item.plannedAt = clock.now;
       }

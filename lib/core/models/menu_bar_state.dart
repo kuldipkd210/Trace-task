@@ -51,14 +51,29 @@ class MenuBarState {
     DayCalendar cal, {
     bool quiet = false,
   }) {
+    if (quiet) {
+      return const MenuBarState(title: '', tone: TrayTone.normal);
+    }
+
     final openItems = items.where((i) => i.isOpen).toList();
     if (openItems.isEmpty) {
-      return const MenuBarState(title: '✓', tone: TrayTone.normal);
+      return const MenuBarState(title: '', tone: TrayTone.normal);
     }
 
     final today = cal.dayOf(now);
+    final topTask = selectTopPriorityTask(openItems, now, cal);
+    if (topTask == null) {
+      return const MenuBarState(title: '', tone: TrayTone.normal);
+    }
+
+    final bool isDeadlineImminentOrPassed = topTask.isDelayed(now, today) ||
+        (topTask.dueAt != null &&
+            topTask.dueAt!.isAfter(now) &&
+            topTask.dueAt!.difference(now).inMinutes <= 30);
+
     final TrayTone tone;
-    if (openItems.any((item) => item.hasFired(now) || item.due < today)) {
+    if (isDeadlineImminentOrPassed ||
+        openItems.any((item) => item.isDelayed(now, today))) {
       tone = TrayTone.red;
     } else if (openItems.any((item) =>
         item.dueAt != null &&
@@ -69,22 +84,11 @@ class MenuBarState {
       tone = TrayTone.normal;
     }
 
-    if (quiet) {
-      return MenuBarState(title: '${openItems.length}', tone: tone);
-    }
-
-    final topTask = selectTopPriorityTask(openItems, now, cal);
-    if (topTask == null) {
-      return MenuBarState(title: '${openItems.length}', tone: tone);
-    }
-
-    final prefix = '${openItems.length} · ';
-    final room = maxLength - prefix.length;
-    final name = topTask.title.length > room
-        ? '${topTask.title.substring(0, room - 1)}…'
+    final name = topTask.title.length > maxLength
+        ? '${topTask.title.substring(0, maxLength - 1)}…'
         : topTask.title;
 
-    return MenuBarState(title: '$prefix$name', tone: tone);
+    return MenuBarState(title: name, tone: tone);
   }
 
   @override

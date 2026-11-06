@@ -7,6 +7,7 @@ import 'package:tracetask/core/models/ranker.dart';
 import 'package:tracetask/core/models/sections.dart';
 import 'package:tracetask/core/config/config.dart';
 import 'package:tracetask/core/panel/panel_model.dart';
+import 'package:tracetask/core/parser/dictation.dart';
 import 'package:tracetask/core/parser/parser.dart';
 import 'package:tracetask/core/store/task_store.dart';
 import 'package:tracetask/core/time/day.dart';
@@ -165,6 +166,41 @@ void main() {
       expect(Sections.bucketOf(itemMonth, today, cal), Bucket.month);
     });
 
+    test('Only tasks with explicit date or time are marked delayed', () {
+      final now = at(2026, 11, 6, 10);
+      final today = day(2026, 11, 6);
+      final yesterday = day(2026, 11, 5);
+
+      // Plain task added yesterday with no date or time mentioned
+      final plainTask = Item(
+        title: 'Plain task from yesterday',
+        due: yesterday,
+        hasExplicitDate: false,
+        createdAt: at(2026, 11, 5, 14),
+      );
+      expect(plainTask.isDelayed(now, today), isFalse);
+      expect(Sections.overdueDays(plainTask, today, cal), 0);
+
+      // Task with explicit date mentioned set to yesterday
+      final datedTask = Item(
+        title: 'Call sam yesterday',
+        due: yesterday,
+        hasExplicitDate: true,
+        createdAt: at(2026, 11, 5, 14),
+      );
+      expect(datedTask.isDelayed(now, today), isTrue);
+      expect(Sections.overdueDays(datedTask, today, cal), 1);
+
+      // Timed task whose deadline time passed
+      final timedTask = Item(
+        title: 'Doctor appointment',
+        due: today,
+        dueAt: at(2026, 11, 6, 9),
+        createdAt: at(2026, 11, 6, 8),
+      );
+      expect(timedTask.isDelayed(now, today), isTrue);
+    });
+
     test('Ranker prioritizes pinned > fired > imminent > overdue > general', () {
       final now = at(2026, 11, 4, 12);
       final today = day(2026, 11, 4);
@@ -200,7 +236,7 @@ void main() {
       final now = at(2026, 11, 4, 12);
 
       // Empty
-      expect(MenuBarState.compute([], now, cal).title, '✓');
+      expect(MenuBarState.compute([], now, cal).title, '');
       expect(MenuBarState.compute([], now, cal).tone, TrayTone.normal);
 
       // Fired task gives red tone
@@ -212,22 +248,22 @@ void main() {
       );
       final state = MenuBarState.compute([fired], now, cal);
       expect(state.tone, TrayTone.red);
-      expect(state.title, '1 · Call client');
+      expect(state.title, 'Call client');
     });
 
     test('MenuBarState priority: earliest time > pinned > last added', () {
       final now = at(2026, 11, 4, 12);
 
-      // Case 1: Only plain tasks -> last task added wins
+      // Case 1: Only plain tasks -> last task added wins (no dot on top bar)
       final task1 = Item(title: 'Task One', due: day(2026, 11, 4), createdAt: at(2026, 11, 4, 9));
       final task2 = Item(title: 'Task Two', due: day(2026, 11, 4), createdAt: at(2026, 11, 4, 10));
       var state = MenuBarState.compute([task1, task2], now, cal);
-      expect(state.title, '2 · Task Two');
+      expect(state.title, 'Task Two');
 
       // Case 2: Pinned task wins over unpinned newer task
       final pinnedTask = Item(title: 'Important Pinned', due: day(2026, 11, 4), pinned: true, createdAt: at(2026, 11, 4, 8));
       state = MenuBarState.compute([task1, task2, pinnedTask], now, cal);
-      expect(state.title, '3 · Important Pinned');
+      expect(state.title, 'Important Pinned');
 
       // Case 3: Task with earliest time wins over pinned task and newer tasks
       final timedEarlier = Item(
@@ -243,7 +279,18 @@ void main() {
         createdAt: at(2026, 11, 4, 11),
       );
       state = MenuBarState.compute([task1, task2, pinnedTask, timedEarlier, timedLater], now, cal);
-      expect(state.title, '5 · Meeting at 2pm');
+      expect(state.title, 'Meeting at 2pm');
+
+      // Case 4: Deadline imminent (within 30m) -> red tone
+      final imminent = Item(
+        title: 'Standup',
+        due: day(2026, 11, 4),
+        dueAt: at(2026, 11, 4, 12, 15),
+        createdAt: at(2026, 11, 4, 8),
+      );
+      state = MenuBarState.compute([imminent], now, cal);
+      expect(state.tone, TrayTone.red);
+      expect(state.title, 'Standup');
     });
   });
 
@@ -385,6 +432,116 @@ void main() {
       model.undo();
       expect(model.flatIDs.length, 1);
       expect(model.selectedID, isNotNull);
+    });
+
+    test('submit with stayOpen: true returns PanelEffect.none', () {
+      final clock = FakeClock(at(2026, 11, 4, 10));
+      final store = TaskStore(clock: clock, cal: cal);
+      final model = PanelModel(store: store, config: Config());
+
+      model.setText('Batch item');
+      final effect = model.submit(stayOpen: true);
+      expect(effect, PanelEffect.none);
+      expect(model.flatIDs.length, 1);
+    });
+
+    test('PINNED section at top, ordered by earliest date/time first', () {
+      final clock = FakeClock(at(2026, 11, 4, 10));
+      final store = TaskStore(clock: clock, cal: cal);
+      final model = PanelModel(store: store, config: Config());
+
+      // Task 1: Unpinned task
+      model.setText('Normal task');
+      model.submit();
+
+      // Task 2: Pinned with later time (5pm)
+      model.setText('Pinned late 5pm');
+      model.submit();
+      final idLate = model.flatIDs.firstWhere((id) => store.item(id)!.title == 'Pinned late');
+      model.togglePin(idLate);
+
+      // Task 3: Pinned with earlier time (11am)
+      model.setText('Pinned early 11am');
+      model.submit();
+      final idEarly = model.flatIDs.firstWhere((id) => store.item(id)!.title == 'Pinned early');
+      model.togglePin(idEarly);
+
+      final groups = model.groups;
+      expect(groups.first.title, 'PINNED');
+      expect(groups.first.isPinned, isTrue);
+      expect(groups.first.rows.length, 2);
+
+      // Earliest (11am) must come before later (5pm)
+      expect(groups.first.rows[0].item.title, 'Pinned early');
+      expect(groups.first.rows[1].item.title, 'Pinned late');
+
+      // Followed by TODAY
+      expect(groups[1].title, 'TODAY');
+      expect(groups[1].rows.any((r) => r.item.title == 'Normal task'), isTrue);
+    });
+
+    test('reorder drag and drop updates order and can be undone', () {
+      final clock = FakeClock(at(2026, 11, 4, 10));
+      final store = TaskStore(clock: clock, cal: cal);
+      final model = PanelModel(store: store, config: Config());
+
+      model.setText('First');
+      model.submit();
+
+      clock.now = at(2026, 11, 4, 10, 5);
+      model.setText('Second');
+      model.submit();
+
+      final firstId = model.flatIDs.firstWhere((id) => store.item(id)!.title == 'First');
+      final secondId = model.flatIDs.firstWhere((id) => store.item(id)!.title == 'Second');
+
+      // Before reorder: First is before Second
+      expect(model.flatIDs.first, firstId);
+
+      // Drag 'Second' before 'First'
+      model.reorderTasks(secondId, firstId, insertBefore: true);
+      expect(model.flatIDs.first, secondId);
+
+      // Undo reorder
+      model.undo();
+      expect(model.flatIDs.first, firstId);
+    });
+
+    test('snooze and quiet mode', () {
+      final clock = FakeClock(at(2026, 11, 4, 10));
+      final store = TaskStore(clock: clock, cal: cal);
+      final model = PanelModel(store: store, config: Config());
+
+      model.setText('Call mom');
+      model.submit();
+      final id = model.flatIDs.first;
+
+      model.snooze(id, 15);
+      final item = store.item(id)!;
+      expect(item.snoozedUntil, clock.now.add(const Duration(minutes: 15)));
+      expect(model.statusMessage, contains('Snoozed'));
+
+      expect(model.quietMode, isFalse);
+      model.toggleQuietMode();
+      expect(model.quietMode, isTrue);
+      expect(model.statusMessage, contains('Quiet mode on'));
+
+      final quietState = MenuBarState.compute(store.items, clock.now, cal, quiet: model.quietMode);
+      expect(quietState.title, ''); // Silent mode: nothing shown!
+    });
+  });
+
+  group('Dictation Normalize', () {
+    test('converts spoken numbers to digits in dates and relative times', () {
+      expect(Dictation.normalize('Ping Sam in two hours.'), 'Ping Sam in 2 hours');
+      expect(Dictation.normalize('Plan two days off'), 'Plan two days off');
+      expect(Dictation.normalize('Buy three apples'), 'Buy three apples');
+      expect(Dictation.normalize('Well, buy milk.'), 'Well buy milk');
+      expect(Dictation.normalize(' ? '), '');
+      expect(Dictation.normalize(''), '');
+      expect(Dictation.normalize('Weigh 3.5 kilos'), 'Weigh 3.5 kilos');
+      expect(Dictation.normalize('Meet 3p.m.'), 'Meet 3pm');
+      expect(Dictation.normalize('Meet 9 A.M.'), 'Meet 9 am');
     });
   });
 }

@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum ThemeStyle { card }
-
 class AppTheme {
-  final ThemeStyle style = ThemeStyle.card;
   final Brightness brightness;
   final Color surface;
   final Color ink;
@@ -46,8 +43,8 @@ class AppTheme {
     divider: Color(0xFFD0D7DE),       // Clean card border / ruled line
     sunken: Color(0xFFF4F5F6),        // Soft sunken row
     fieldStroke: Color(0xFFD8343C),   // Focus stroke
-    highlighter: Color(0xFFFFE680),   // Fluorescent yellow highlighter
-    highlighterInk: Color(0xFF1C2024), // Ink on highlighter
+    highlighter: Color(0xFFE5E9EE),   // Soft refined slate/neutral selection
+    highlighterInk: Color(0xFF1C2024), // Ink on selection
   );
 
   // Dark Mode: Identical Index Card Design in Charcoal Slate
@@ -62,8 +59,8 @@ class AppTheme {
     divider: Color(0xFF383C44),       // Subtle card border / ruled line
     sunken: Color(0xFF1A1C20),        // Dark sunken row
     fieldStroke: Color(0xFFE63946),   // Focus stroke
-    highlighter: Color(0xFFFFE680),   // Yellow highlighter
-    highlighterInk: Color(0xFF1C2024), // Dark ink on yellow highlighter for maximum contrast
+    highlighter: Color(0xFF2C3440),   // Refined dark slate selection
+    highlighterInk: Color(0xFFFFFFFF), // Crisp white on selection
   );
 
   static AppTheme of(BuildContext context, {Brightness? forcedBrightness}) {

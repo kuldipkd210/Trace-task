@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
@@ -13,9 +12,7 @@ class HotkeyService {
     try {
       await hotKeyManager.unregisterAll();
 
-      final keyModifiers = Platform.isMacOS
-          ? [HotKeyModifier.alt]
-          : [HotKeyModifier.alt];
+      final keyModifiers = [HotKeyModifier.alt];
 
       _registeredHotKey = HotKey(
         key: PhysicalKeyboardKey.space,
