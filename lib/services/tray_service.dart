@@ -38,7 +38,8 @@ class TrayService with TrayListener {
         await trayManager.setIcon(_cachedNormalIcon!);
       } catch (_) {
         try {
-          await trayManager.setIcon('assets/app_icon.png');
+          final fallback = Platform.isWindows ? 'assets/app_icon.ico' : 'assets/app_icon.png';
+          await trayManager.setIcon(fallback);
         } catch (_) {}
       }
 
@@ -51,7 +52,9 @@ class TrayService with TrayListener {
   }
 
   Future<String> _ensureIconFile({bool isRed = false}) async {
-    final fileName = isRed ? 'app_icon_red.png' : 'app_icon.png';
+    final fileName = isRed
+        ? 'app_icon_red.png'
+        : (Platform.isWindows ? 'app_icon.ico' : 'app_icon.png');
     final baseDir = await AppPaths.getBaseDir();
     final targetFile = File(p.join(baseDir.path, fileName));
 
