@@ -5,9 +5,9 @@ Name=TraceTask
 GenericName=Task Tracker
 Comment=Minimalist, distraction-free desktop task tracker
 Exec=tracetask
-Icon=tracetask
+Icon=com.tracetask.tracetask
 Terminal=false
 Categories=Utility;Office;Productivity;
+StartupWMClass=com.tracetask.tracetask
 Keywords=task;todo;track;notes;tack;
 StartupNotify=true
-

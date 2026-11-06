@@ -29,6 +29,17 @@ static void my_application_activate(GApplication* application) {
   gtk_window_set_decorated(window, FALSE);
   gtk_window_set_title(window, "TraceTask");
 
+  // Set window and dock icon from bundle assets
+  g_autofree gchar* exe_path = g_file_read_link("/proc/self/exe", nullptr);
+  if (exe_path != nullptr) {
+    g_autofree gchar* exe_dir = g_path_get_dirname(exe_path);
+    g_autofree gchar* bundle_icon =
+        g_build_filename(exe_dir, "data", "flutter_assets", "assets", "app_icon.png", nullptr);
+    if (g_file_test(bundle_icon, G_FILE_TEST_EXISTS)) {
+      gtk_window_set_icon_from_file(window, bundle_icon, nullptr);
+    }
+  }
+
   GdkScreen* screen = gtk_window_get_screen(window);
   GdkVisual* visual = gdk_screen_get_rgba_visual(screen);
   if (visual != NULL) {

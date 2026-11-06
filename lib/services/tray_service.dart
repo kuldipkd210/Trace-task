@@ -37,8 +37,9 @@ class TrayService with TrayListener {
       try {
         await trayManager.setIcon(_cachedNormalIcon!);
       } catch (_) {
-        // Fallback to standard Ubuntu GNOME system theme icon
-        await trayManager.setIcon('appointment-soon');
+        try {
+          await trayManager.setIcon('assets/app_icon.png');
+        } catch (_) {}
       }
 
       trayManager.addListener(this);
@@ -54,15 +55,16 @@ class TrayService with TrayListener {
     final baseDir = await AppPaths.getBaseDir();
     final targetFile = File(p.join(baseDir.path, fileName));
 
-    if (!targetFile.existsSync()) {
-      try {
-        // Try reading asset bundle
-        final byteData = await rootBundle.load('assets/$fileName');
-        await targetFile.writeAsBytes(byteData.buffer.asUint8List());
-      } catch (_) {
-        // If asset bundle not ready, check project folder
-        final projectIcon = File('/home/kd/Work/Trace-task/assets/$fileName');
-        if (projectIcon.existsSync()) {
+    try {
+      final byteData = await rootBundle.load('assets/$fileName');
+      final bytes = byteData.buffer.asUint8List();
+      if (!targetFile.existsSync() || targetFile.lengthSync() != bytes.length) {
+        await targetFile.writeAsBytes(bytes);
+      }
+    } catch (_) {
+      final projectIcon = File('/home/kd/Work/Trace-task/assets/$fileName');
+      if (projectIcon.existsSync()) {
+        if (!targetFile.existsSync() || targetFile.lengthSync() != projectIcon.lengthSync()) {
           projectIcon.copySync(targetFile.path);
         }
       }
@@ -71,7 +73,7 @@ class TrayService with TrayListener {
     if (targetFile.existsSync()) {
       return targetFile.path;
     }
-    return 'appointment-soon';
+    return 'assets/$fileName';
   }
 
   Future<void> updateState(MenuBarState state) async {
