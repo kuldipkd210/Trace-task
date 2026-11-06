@@ -41,8 +41,7 @@ jobs:
       - name: Package Linux Binary
         run: |
           cp assets/com.tracetask.tracetask.desktop build/linux/x64/release/bundle/ 2>/dev/null || true
-          cd build/linux/x64/release/bundle
-          tar -czvf ../../../../tracetask-linux-x64.tar.gz .
+          tar -czvf tracetask-linux-x64.tar.gz -C build/linux/x64/release/bundle .
 
       - name: Upload Linux Artifact
         uses: actions/upload-artifact@v4
@@ -73,8 +72,7 @@ jobs:
 
       - name: Package macOS App
         run: |
-          cd build/macos/Build/Products/Release
-          zip -r ../../../../tracetask-macos.zip TraceTask.app
+          (cd build/macos/Build/Products/Release && zip -r "$GITHUB_WORKSPACE/tracetask-macos.zip" TraceTask.app)
 
       - name: Upload macOS Artifact
         uses: actions/upload-artifact@v4
@@ -131,16 +129,19 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tracetask-linux
+          path: .
 
       - name: Download macOS Bundle
         uses: actions/download-artifact@v4
         with:
           name: tracetask-macos
+          path: .
 
       - name: Download Windows Bundle
         uses: actions/download-artifact@v4
         with:
           name: tracetask-windows
+          path: .
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
